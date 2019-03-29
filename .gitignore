@@ -213,6 +213,22 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+
+# visual studio code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+#
+/data
+/scripts/logs
+
+.nfs*
+
+/figures/
+
 ### Python Patch ###
 .venv/
 
@@ -235,3 +251,4 @@ tags
 [._]*.un~
 
 # End of https://www.gitignore.io/api/vim,linux,python,pycharm
+

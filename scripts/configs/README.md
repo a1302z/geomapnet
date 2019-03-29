@@ -11,9 +11,13 @@ Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses
 ## Hyperparameters
 Most parameters in the config files are self-explanatory. Here are some notes:
 
-- `beta` is the initial value of Beta in Eq. 3 of the paper
+- `beta` is the initial weight of the absolute rotation. In case of geometric weighting, it is the initial value of Beta in Eq. 3 of the paper. In case of uncertainty weighting, it is used as log(sigma) of the absolute rotation.
 
-- `gamma` is the initial value of Gamma in Eq. 3 of the paper
+- `beta_translation` is the initial weight of the absolute translation. It's default value is zero. In case of geometric weighting, it is the initial value of the translation weight similar to Beta for rotation sin Eq. 3 of the paper. In case of uncertainty weighting, it is used as log(sigma) of the absolute translation.
+
+- `gamma` is the initial weight of the relative rotation. In case of geometric weighting, is the initial value of Gamma in Eq. 3 of the paper. In case of uncertainty weighting, it is used as log(sigma) of the relative rotation. 
+
+- `gamma_translation` is the initial weight of the relative translation. It's default value is zero. In case of geometric weighting, is the initial value of the translation weight similar to Gamma for rotation in Eq. 3 of the paper. In case of uncertainty weighting, it is used as log(sigma) of the relative translation. 
 
 - `steps` is the size of tuples of images to use for training (parameter `s`
 described in Section 3.5 of the paper)

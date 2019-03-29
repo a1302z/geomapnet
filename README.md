@@ -1,5 +1,5 @@
 [![License CC BY-NC-SA 4.0](https://img.shields.io/badge/license-CC4.0-blue.svg)](https://raw.githubusercontent.com/NVIDIA/FastPhotoStyle/master/LICENSE.md)
-![Python 2.7](https://img.shields.io/badge/python-2.7-green.svg)
+![Python 3.5](https://img.shields.io/badge/python-3.5-green.svg) ![Python 2.7](https://img.shields.io/badge/python-2.7-green.svg)
 # Geometry-Aware Learning of Maps for Camera Localization 
 
 ## License
@@ -7,11 +7,16 @@
 Copyright (C) 2018 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode). 
 
+<b> This documentation was modified by Leonhard Feiner and Alexander Ziller. </b>
+
 ## Documentation 
 
-This is the PyTorch implementation of our CVPR 2018 paper
+This is the PyTorch implementation of CVPR 2018 paper
 
 [Samarth Brahmbhatt, Jinwei Gu, Kihwan Kim, James Hays, and Jan Kautz. Geometry-Aware Learning of Maps for Camera Localization. CVPR 2018.](https://arxiv.org/abs/1712.03342).
+
+including Dual-Input and Multitask model developed during Advanced Deep Learning practical. 
+<b> Note: The latter two are designed only for DeepLoc dataset as they require semantic labels </b>
 
 ### A four-minute video summary (click below for the video)
 
@@ -19,18 +24,19 @@ This is the PyTorch implementation of our CVPR 2018 paper
 
 ## Setup
 
+The original implementation used python 2.7 and was upgraded to python 3.5. Unfortunately the Robot Car SDK used in some parts of the code is only available in python 2.7. Therefore training and validating the robot car dataset requires to use python 2.7. The compatibility of current code with python 2.7 and with robot car is not fully tested. We recommend to use python 3.5.
+
 MapNet uses a Conda environment that makes it easy to install all dependencies.
 
-1. Install [miniconda](https://conda.io/miniconda.html) with Python 2.7.
+1. Install [Anaconda](https://www.anaconda.com/download/) with Python 3.7.
 
-2. Create the `mapnet` Conda environment: `conda env create -f environment.yml`.
+2. Create the `mapnet` Conda environment: `conda env create -f environment_py3.yml`.
 
 3. Activate the environment: `conda activate mapnet_release`.
 
 ## Data
 We support the
-[7Scenes](https://www.microsoft.com/en-us/research/project/rgb-d-dataset-7-scenes/)
-and [Oxford RobotCar](http://robotcar-dataset.robots.ox.ac.uk/) datasets right
+[7Scenes](https://www.microsoft.com/en-us/research/project/rgb-d-dataset-7-scenes/), the [Oxford RobotCar](http://robotcar-dataset.robots.ox.ac.uk/) and the [DeepLoc](http://deeploc.cs.uni-freiburg.de/) datasets.
 now. You can also write your own PyTorch dataloader for other datasets and put it in the
 `dataset_loaders` directory. Refer to 
 [this README file](./dataset_loaders/README.md) for more details.
@@ -45,6 +51,7 @@ symlinks:
 cd data/deepslam_data &&
 ln -s 7SCENES_DIR 7Scenes &&
 ln -s ROBOTCAR_DIR RobotCar_download 
+ln -s DEEPLOC_DIR DeepLoc 
 `
 
 ---
@@ -75,12 +82,61 @@ side is 256 pixels.
 
 ## Running the code
 
-
 ### Demo/Inference
-The trained models for all experiments presented in the paper can be downloaded
+The trained models for all experiments (7Scenes and RobotCar) presented in the paper can be downloaded
 [here](https://drive.google.com/open?id=1J2QG_nHrRTKcDf9CGXRK9MWH1h-GuMLy).
 The inference script is `scripts/eval.py`. Here are some examples, assuming
 the models are downloaded in `scripts/logs`. Please go to the `scripts` folder to run the commands.
+
+#### DeepLoc
+The DeepLoc dataset does not require a scene.
+
+- PoseNet:
+```
+$ python eval.py --dataset DeepLoc --model posenet \
+--weights logs/DeepLoc__posenet_posenet_learn_beta/epoch_300.pth.tar \
+--config_file configs/posenet.ini --val
+Median error in translation = 
+Median error in rotation    = 
+```
+
+- MapNet:
+```
+$ python eval.py --dataset DeepLoc --model mapnet \
+--weights logs/DeepLoc__mapnet_mapnet/epoch_300.pth.tar \
+--config_file configs/mapnet.ini --val --pose_graph
+Median error in translation = 
+Median error in rotation    = 
+```
+
+- For evaluating on the `train` split remove the `--val` flag
+
+- To save the results to disk without showing them on screen (useful for scripts),
+add the `--output_dir ../results/` flag
+
+- See [this README file](./scripts/configs/README.md)
+for more information on hyper-parameters and which config files to use.
+
+
+- Dual-Input:
+```
+$ python eval.py --dataset DeepLoc --model semanticV3 \
+--weights logs/DeepLoc__semanticV3_mapnet-multiinput/epoch_300.pth.tar \
+--config_file configs/mapnet-multiinput.ini --val
+Median error in translation = 
+Median error in rotation    = 
+```
+
+- Multitask:
+```
+$ python eval.py --dataset DeepLoc --model multitask \
+--weights logs/DeepLoc__multitask_uncertainty-criterion_learn_beta_learn_gamma_learn_sigma_uncertainty_criterion/epoch_300.pth.tar \
+--config_file configs/uncertainty-criterion.ini --val
+Median error in translation = 
+Median error in rotation    = 
+```
+
+---
 
 #### 7_Scenes
 - MapNet++ with pose-graph optimization (i.e., MapNet+PGO) on `heads`:
@@ -159,10 +215,21 @@ Mean error in translation = 9.84 m
 Mean error in rotation    = 3.96 degrees
 ```
 
----
 
 ### Train
-The executable script is `scripts/train.py`. Please go to the `scripts` folder to run these commands. For example:
+The executable script is `scripts/train.py`. Please go to the `scripts` folder to run these commands. (The DeepLoc dataset does not require a scene) For example:
+
+
+- PoseNet on `DeepLoc`: `python train.py --dataset DeepLoc --config_file configs/posenet.ini --model posenet --device 0
+--learn_beta`
+
+- MapNet on `DeepLoc`: `python train.py --dataset DeepLoc --config_file configs/mapnet.ini --model mapnet --device 0`
+
+- Dual-Input on `DeepLoc`: `python train.py --dataset DeepLoc --config_file configs/mapnet-multiinput.ini --model semanticV3 --device 0
+--learn_beta --learn_gamma`
+
+- Multitask  on `DeepLoc`: `python train.py --dataset DeepLoc --config_file configs/uncertainty-criterion.ini --model semanticV3 --device 0
+--learn_beta --learn_gamma --learn_sigma --uncertainty_criterion`
 
 - PoseNet on `chess` from `7Scenes`: `python train.py --dataset 7Scenes
 --scene chess --config_file configs/posenet.ini --model posenet --device 0
@@ -178,6 +245,14 @@ The executable script is `scripts/train.py`. Please go to the `scripts` folder t
 `python train.py --dataset 7Scenes --checkpoint <trained_mapnet_model.pth.tar>
 --scene chess --config_file configs/mapnet++_7Scenes.ini --model mapnet++
 --device 0 --learn_beta --learn_gamma`
+
+![train.png](./figures/train.png)
+
+
+- MapNet on `chess` from `7Scenes`: `python train.py --dataset 7Scenes
+--scene chess --config_file configs/mapnet.ini --model mapnet
+--device 0 --learn_beta --learn_gamma`
+
 
 For example, we can train MapNet++ model on `heads` from a pretrained MapNet model:
 
@@ -209,7 +284,13 @@ server for logging the training progress:
 
 `python -m visdom.server -env_path=scripts/logs/`.
 
---- 
+---
+### Visual Explanations of Model
+During the Practical we included [code](https://github.com/1Konny/gradcam_plus_plus-pytorch) to calculate maps as described in the [GradCam++ paper](https://arxiv.org/pdf/1710.11063.pdf). This can be calculated by:
+```
+python show_gradcampp.py --dataset DeepLoc --model multitask --val --n_activation_maps 3 --layer_name layer1,layer2 --config_file configs/uncertainty-criterion.ini --weights logs/DeepLoc__multitask_multitask-new-criterion_learn_beta_learn_gamma_learn_sigma_seed13/epoch_300.pth.tar
+```
+
 
 ### Network Attention Visualization
 Calculates the network attention visualizations and saves them in a video
@@ -270,7 +351,7 @@ uses these undistorted and demosaiced images.
 ---
 
 ### Citation
-If you find this code useful for your research, please cite our paper
+Citation for original MapNet:
 
 ```
 @inproceedings{mapnet2018,

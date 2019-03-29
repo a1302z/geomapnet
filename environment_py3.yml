@@ -6,18 +6,18 @@ channels:
 - conda-forge
 dependencies:
 - imageio 
-- configparser
 - ipython
 - numpy
 - pandas
 - pip
-- python=2.7
+- python=3.5
 - scikit-learn
 - scipy
 - pytorch
 - torchvision
 - matplotlib
+- visdom
+- opencv
 - pip:
   - colour-demosaicing
   - transforms3d
-  - visdom
