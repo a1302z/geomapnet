@@ -206,7 +206,6 @@ class DeepLoc(data.Dataset):
 
         inputs = tuple(self._loader_transformer(image_type, index) for image_type in self.input_types)
         outputs = tuple(self._loader_transformer(image_type, index) for image_type in self.output_types)
-        print(type(inputs[0]))
         
         if len(inputs) == 1:
             inputs = inputs[0]

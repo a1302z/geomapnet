@@ -222,7 +222,7 @@ else:
 batch_size = 1
 assert batch_size == 1
 loader = DataLoader(data_set, batch_size=batch_size, shuffle=False,
-                    num_workers=5, pin_memory=True)
+                    num_workers=settings.getint('training','num_workers'), pin_memory=True)
 
 # activate GPUs
 CUDA = torch.cuda.is_available()
