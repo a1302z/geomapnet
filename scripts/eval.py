@@ -33,7 +33,7 @@ if not DISPLAY:
 
 # config
 parser = argparse.ArgumentParser(description='Evaluation script for pose regression networks')
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar'),
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'AachenDayNight'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, default='', help='Scene name')
 parser.add_argument('--weights', type=str, help='trained weights to load')
@@ -129,8 +129,11 @@ data_dir = osp.join('..', 'data', args.dataset)
 stats_filename = osp.join(data_dir, args.scene, 'stats.txt')
 stats = np.loadtxt(stats_filename)
 # transformer
+crop_size_file = osp.join(data_dir, 'crop_size.txt')
+crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 data_transform = transforms.Compose([
     transforms.Resize(256),
+    transforms.CenterCrop(crop_size),
     transforms.ToTensor(),
     transforms.Normalize(mean=stats[0], std=np.sqrt(stats[1]))])
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
@@ -207,6 +210,10 @@ elif args.dataset == 'DeepLoc':
 elif args.dataset == 'RobotCar':
     from dataset_loaders.robotcar import RobotCar
     data_set = RobotCar(**kwargs)
+    L = len(data_set)
+elif args.dataset == 'AachenDayNight':
+    from dataset_loaders.aachen import AachenDayNight
+    data_set = AachenDayNight(**kwargs)
     L = len(data_set)
 else:
     raise NotImplementedError

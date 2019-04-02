@@ -93,7 +93,6 @@ class DeepLoc(data.Dataset):
             indicates whether the inputs should be concatenated to one bigger tensor
             otherwise it is returend as a tuple of tensors
         """
-                 
         np.random.seed(seed)
         reduce_data = reduce_data or self.semantic or self.dual_output 
         
@@ -207,7 +206,7 @@ class DeepLoc(data.Dataset):
 
         inputs = tuple(self._loader_transformer(image_type, index) for image_type in self.input_types)
         outputs = tuple(self._loader_transformer(image_type, index) for image_type in self.output_types)
-        
+        print(type(inputs[0]))
         
         if len(inputs) == 1:
             inputs = inputs[0]
@@ -220,7 +219,6 @@ class DeepLoc(data.Dataset):
         #print([x.shape for x in outputs])
         #print(np.amax(outputs[1].numpy()))
         #print(self.output_types)
-        
         return inputs, outputs
 
     

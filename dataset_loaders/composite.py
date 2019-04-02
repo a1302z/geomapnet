@@ -62,6 +62,12 @@ class MF(data.Dataset):
                                 real=self.real, **kwargs)
             if self.include_vos and self.real:
                 self.gt_dset = DeepLoc(*args, skip_images=True, real=False, **kwargs)
+        elif dataset == 'AachenDayNight':
+            from dataset_loaders.aachen import AachenDayNight
+            self.dset = AachenDayNight(*args, 
+                                real=self.real, **kwargs)
+            if self.include_vos and self.real:
+                self.gt_dset = AachenDayNight(*args, skip_images=True, real=False, **kwargs)
         else:
             raise NotImplementedError
 

@@ -27,7 +27,7 @@ Main training script for MapNet
 
 parser = argparse.ArgumentParser(description='Training script for PoseNet and'
                                              'MapNet variants')
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar'),
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'AachenDayNight'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, default='', help='Scene name')
 parser.add_argument('--config_file', type=str, help='configuration file')
@@ -172,6 +172,7 @@ crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 # transformers
 tforms = [transforms.Resize(256)]
+tforms.append(transforms.CenterCrop(crop_size))
 if color_jitter > 0:
     assert color_jitter <= 1.0
     print('Using ColorJitter data augmentation')
@@ -231,6 +232,14 @@ if args.model == 'posenet':
                       concatenate_inputs=True)
 
         from dataset_loaders.deeploc import DeepLoc
+        train_set = DeepLoc(train=True, **kwargs)
+        val_set = DeepLoc(train=False, **kwargs)
+    elif args.dataset == 'AachenDayNight':
+        """
+        data_path, train, train_split=0.7,    
+                input_types='image', output_types='pose', real=False
+        """
+        from dataset_loaders.aachen import AachenDayNight
         train_set = DeepLoc(train=True, **kwargs)
         val_set = DeepLoc(train=False, **kwargs)
     elif args.dataset == 'RobotCar':

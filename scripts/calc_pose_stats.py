@@ -15,7 +15,7 @@ script to calculate pose translation stats (run first for every dataset)
 # config
 parser = argparse.ArgumentParser(
     description='Calculate pose translation stats')
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar'),
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'Aachen'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, default='', help='Scene name')
 args = parser.parse_args()

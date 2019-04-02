@@ -18,6 +18,7 @@ dependencies:
 - matplotlib
 - visdom
 - opencv
+- scipy
 - pip:
   - colour-demosaicing
   - transforms3d
