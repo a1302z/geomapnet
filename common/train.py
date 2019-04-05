@@ -91,8 +91,9 @@ class Trainer(object):
         self.extra_criterion = val_criterion
         self.experiment = experiment
         self.optimizer = optimizer
-        if 'CUDA_VISIBLE_DEVICES' not in os.environ:
-            os.environ['CUDA_VISIBLE_DEVICES'] = device
+        if device is not None:
+            if 'CUDA_VISIBLE_DEVICES' not in os.environ:
+                os.environ['CUDA_VISIBLE_DEVICES'] = device
 
         # read the config
         settings = configparser.ConfigParser()
@@ -159,7 +160,7 @@ class Trainer(object):
         print('Experiment: {:s}'.format(self.experiment))
         for k, v in list(self.config.items()):
             print('{:s}: {:s}'.format(k, str(v)))
-        print('Using GPU {:s} / {:d}'.format(device, torch.cuda.device_count()))
+        print('Using GPU {:s} / {:d}'.format(device if device is not None else 'N/A', torch.cuda.device_count()))
         print('---------------------------------------')
 
         # set random seed

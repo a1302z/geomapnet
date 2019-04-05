@@ -34,7 +34,7 @@ parser.add_argument('--config_file', type=str, help='configuration file')
 parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++', 'multitask', 'semanticOutput',
                                         'semanticV0', 'semanticV1','semanticV2', 'semanticV3', 'semanticV4'),
                     help='Model to train')
-parser.add_argument('--device', type=str, default='0',
+parser.add_argument('--device', type=str, default=None,
                     help='value to be set to $CUDA_VISIBLE_DEVICES')
 parser.add_argument('--checkpoint', type=str, help='Checkpoint to resume from',
                     default=None)

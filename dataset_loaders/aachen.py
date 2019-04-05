@@ -14,35 +14,14 @@ def identity(x):
     return x
 
 class camerapoint:
-    def __init__(self, rotation_matrix, translation):
-        self.rotation_matrix = rotation_matrix
-        self.translation = translation
-        self.path = None
+    def __init__(self, position = np.zeros(3), rotation = np.zeros(4), img_path = None):
+        self.position = position
+        self.rotation = rotation
+        self.img_path = img_path
         self.pose = None
         
-    def __str__(self):
-        s = ''
-        if self.path is not None:
-            s+='Path: '+self.path+'\n'
-        s += 'Rotation:\n'+str(self.rotation_matrix)+'\nPosition:\n'+str(self.translation)
-        return s
-    
-    def to_pose_format(self):
-        s = ""
-        s+= str(self.path)+" "
-        for f in self.translation:
-            s+= str(f)+" "
-        q = quat.mat2quat(self.rotation_matrix)
-        for f in q:
-            s+=str(f)+" "
-        return s
-        
-    
-    def add_path(self, path):
-        self.path = path
-    
-    def set_pose(self,pose):
-        self.pose=pose
+    def set_pose(self, pose):
+        self.pose = pose
 
 
 class AachenDayNight(data.Dataset):
@@ -73,38 +52,29 @@ class AachenDayNight(data.Dataset):
         }
         
         ##TODO: remove hardcoded
-        filename = 'aachen_cvpr2018_db.out'
+        filename = 'aachen_cvpr2018_db.nvm'
         f = open(os.path.join(data_path,filename), 'r')
         lines = f.readlines()
-        num_cams = int(lines[1].split(' ')[0])
-        last_line = num_cams*5+1
-        lines = lines[:last_line+1]
-        lines = [x.strip().split(' ') for x in lines]
-        lines[2:] = [[float(y) for y in x] for x in lines[2:]]
-        if print_debugging_info:
-            print('Read %d lines'%len(lines))
+        num_points = int(lines[2].strip())
+        lines = lines[:num_points+3]
+        lines[3:] = [x.strip().split(' ') for x in lines[3:]]
+        """
+        Format is 
+        <Camera> = <File name> <focal length> <quaternion WXYZ> <camera center> <radial distortion> 0
+        """
+
         self.points = {}
-        for i in range(num_cams):
-            #5 Lines per Object:
-            #print('New object')
-            x0 = i*5+2   #first line of descriptor 
-            x1 = i*5+6   #last line of descriptor
-            cam_params = np.asarray(lines[x0])
-            rot_x = np.asarray(lines[x0+1])
-            rot_y = np.asarray(lines[x0+2])
-            rot_z = np.asarray(lines[x0+3])
-            pos = np.asarray(lines[x0+4])
-            point = camerapoint(np.asarray([rot_x,rot_y,rot_z]), pos)
-            self.points[i] = point
+        for i in range(len(lines)-3):
+            l = lines[i+3]
+            q = np.asarray([float(x) for x in l[2:6]])
+            c = np.asarray([float(x) for x in l[6:9]])
+            p = camerapoint(img_path = l[0], rotation=q, position=c)
+            self.points[i] = p
+            
         if print_debugging_info:
             print('Totals to %d points'%len(self.points))
             
-        #TODO: Hardcoded
-        list_file = open(os.path.join(data_path,'aachen_cvpr2018_db.list.txt'),'r')
-        name_lines = [ntpath.basename(x.strip()) for x in list_file.readlines()]
-        for i, line in enumerate(name_lines):
-            self.points[i].add_path(line)
-        assert len(self.points) == len(name_lines), 'Not same number of points and images'
+        
         self.train_keys = None
         self.test_keys = None
         files_exist = os.path.isfile('train_'+str(self.train_split)+'.txt')
@@ -141,7 +111,7 @@ class AachenDayNight(data.Dataset):
             # optionally, use the ps dictionary to calc stats
             pos_list = []
             for i in self.train_keys:
-                pos_list.append(self.points[i].translation)
+                pos_list.append(self.points[i].position)
             pos_list = np.asarray(pos_list)
             mean_t = pos_list.mean(axis=0)
             std_t = pos_list.std(axis=0)
@@ -153,8 +123,7 @@ class AachenDayNight(data.Dataset):
         indexes = self.train_keys if self.train else self.test_keys
         for i in indexes:
             p = self.points[i]
-            q = txq.mat2quat(p.rotation_matrix)
-            pose = process_poses_quaternion(np.asarray([p.translation]), np.asarray([q]), mean_t, std_t, np.eye(3), np.zeros(3), np.ones(1))
+            pose = process_poses_quaternion(np.asarray([p.position]), np.asarray([p.rotation]), mean_t, std_t, np.eye(3), np.zeros(3), np.ones(1))
             p.set_pose(pose)
         
         
@@ -178,7 +147,7 @@ class AachenDayNight(data.Dataset):
         outs = []
         for inp in self.input_types:
             if inp == 'image':
-                img_path = os.path.join(self.data_path,'images_upright/db',point.path)
+                img_path = os.path.join(self.data_path,'images_upright',point.img_path)
                 img = load_image(img_path)
                 img = None if img is None else self.transforms['img'](img)
                 inps.append(img)
