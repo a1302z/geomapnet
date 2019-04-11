@@ -27,7 +27,7 @@ def identity(x):
 class DeepLoc(data.Dataset):
     
     LOADERS = {  
-            'left' : default_loader,
+            'img' : default_loader,
             'right' : default_loader,
             'label_colorized' : default_loader,
             'label' : single_channel_loader,
@@ -38,7 +38,7 @@ class DeepLoc(data.Dataset):
         """
         Loads an image stored in the internal dataframe or gets an pose from the poses list
         
-        :param name : string (valid names: 'left', 'right', 'label_colorized', 'label', 'depth')
+        :param name : string (valid names: 'img', 'right', 'label_colorized', 'label', 'depth')
             used to select the type of data to load 
         :param index: : int, the index of a certain image
         
@@ -58,7 +58,7 @@ class DeepLoc(data.Dataset):
         """
         Loads and transformes a data of a certain type and of a certian index
         
-        :param name : string (valid names: 'left', 'right', 'label_colorized', 'label', 'depth')
+        :param name : string (valid names: 'img', 'right', 'label_colorized', 'label', 'depth')
             used to select the type of data to load 
         :param index: : int, the index of a certain image
         
@@ -73,7 +73,7 @@ class DeepLoc(data.Dataset):
                  transform=identity, semantic_transform=identity, 
                  semantic_colorized_transform=identity, target_transform=identity, 
                  vo_lib='orbslam', scene='',    
-                 input_types='left', output_types='pose', concatenate_inputs=False):
+                 input_types='img', output_types='pose', concatenate_inputs=False):
         """
         :param data_path: root DeepLoc data directory.
         Usually '../data/deepslam_data/DeepLoc'
@@ -85,7 +85,7 @@ class DeepLoc(data.Dataset):
         :param target_transform: transform to apply to the poses
         :param real: If True, load poses from SLAM/integration of VO
         :param vo_lib: Library to use for VO (currently only 'dso')
-        :param input_types: str or list of str, default = 'left'
+        :param input_types: str or list of str, default = 'img'
             names of the data types which should be returned in the first part of the tuple
         :param output_types_ str or list of str, default = 'pose'
             names of the data types which should be returned in the second part of the tuple
@@ -97,7 +97,7 @@ class DeepLoc(data.Dataset):
         reduce_data = reduce_data or self.semantic or self.dual_output 
         
         self.transforms = {
-            'left' : transform, 
+            'img' : transform, 
             'right' : transform,
             'label_colorized' : semantic_colorized_transform,
             'label' : semantic_transform,
@@ -124,7 +124,7 @@ class DeepLoc(data.Dataset):
 
         # generate tuples which contain the name of the image sets and the path to the folder
         image_directories = [
-            ('left', img_base_left),
+            ('img', img_base_left),
             ('label', labels_dir),
             ('label_colorized', labels_colorized_dir)
         ]
@@ -245,13 +245,13 @@ def main():
     concatenate_inputs = (mode == 3)
 
     if mode == 0:
-        input_types = 'left'
+        input_types = 'img'
     elif mode == 1 and not dual_output:
         input_types= 'depth'
     elif mode == 2 and not dual_output:
-        input_types = ['left', 'depth']
+        input_types = ['img', 'depth']
     elif mode == 3:
-        input_types = ['left', 'label_colorized']
+        input_types = ['img', 'label_colorized']
            
     dset = DeepLoc('../data/deepslam_data/DeepLoc', True, transform,
                    input_types=input_types, output_types=[], concatenate_inputs=concatenate_inputs)

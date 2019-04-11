@@ -131,19 +131,20 @@ stats = np.loadtxt(stats_filename)
 # transformer
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
+resize = int(max(crop_size))
 data_transform = transforms.Compose([
-    transforms.Resize(256),
+    transforms.Resize(resize),
     transforms.CenterCrop(crop_size),
     transforms.ToTensor(),
     transforms.Normalize(mean=stats[0], std=np.sqrt(stats[1]))])
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
 
 int_semantic_transform = transforms.Compose([
-        transforms.Resize(256,0), #Nearest interpolation
+        transforms.Resize(resize,0), #Nearest interpolation
         transforms.Lambda(lambda pic: torch.from_numpy(np.array(pic, np.int64, copy=False)))
     ])
 float_semantic_transform = transforms.Compose([
-        transforms.Resize(256,0), #Nearest interpolation
+        transforms.Resize(resize,0), #Nearest interpolation
         transforms.ToTensor()
     ])
 # read mean and stdev for un-normalizing predictions

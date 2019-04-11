@@ -298,8 +298,9 @@ class SemanticOutput(nn.Module):
     The padding of the upconvolutions is fixed to a certain input and output size of the Images.
     """
     def __init__(self, posenet, classes=3, droprate=0.5, pretrained=True,
-      feat_dim=2048, filter_nans=False):
+      feat_dim=2048, filter_nans=False, input_size=(224,224)):
         super(SemanticOutput, self).__init__()
+        self.input_size=input_size
         self.posenet = posenet
         self.semantic_layer0 = nn.ConvTranspose2d(64, classes, kernel_size=(6,5), stride=4, padding=1, bias=False)
         self.semantic_layer1 = nn.ConvTranspose2d(64, 64, kernel_size=7, stride=1, padding=3, bias=False)
@@ -328,26 +329,48 @@ class SemanticOutput(nn.Module):
         
     def forward(self, x):
         s = x.size()
-        x = x.view(-1, 3, 256, 455)
+        #print(s)
+        x = x.view(-1, 3, self.input_size[0], self.input_size[1])
         x0 = x
+        s1 = x.size()
+        #print(s1)
         x = self.posenet.feature_extractor.conv1(x)
         x = self.posenet.feature_extractor.bn1(x)
         x = self.posenet.feature_extractor.relu(x)
         x = self.posenet.feature_extractor.maxpool(x)
         x1 = x
+        s2 = x.size()
+        #print(s2)
         x = self.posenet.feature_extractor.layer1(x)
         x2 = x
+        s3 = x.size()
+        #print(s3)
         x = self.posenet.feature_extractor.layer2(x)
         x3 = x
+        s4 = x.size()
+        #print(s4)
         x = self.posenet.feature_extractor.layer3(x)
         x4 = x
+        s5 = x.size()
+        #print(s5)
         x = self.posenet.feature_extractor.layer4(x)
         
         semantic = self.semantic_layer4(x)
+        semantic = nn.functional.interpolate(semantic, size=s5[2:4])
         semantic = self.semantic_layer3(semantic + x4)
+        semantic = nn.functional.interpolate(semantic, size=s4[2:4])
+        #print(semantic.size())
         semantic = self.semantic_layer2(semantic + x3)
+        semantic = nn.functional.interpolate(semantic, size=s3[2:4])
+        #print(semantic.size())
         semantic = self.semantic_layer1(semantic + x2)
+        semantic = nn.functional.interpolate(semantic, size=s2[2:4])
+        #print(semantic.size())
         semantic = self.semantic_layer0(semantic + x1)
+        semantic = nn.functional.interpolate(semantic, size=s1[2:4])
+        semantic.view(s[0],s[1],-1)
+        #print(semantic.size())
+        #print('Forward pass completed')
 
         return semantic
     
@@ -359,13 +382,14 @@ class MultiTask(nn.Module):
     The padding of the upconvolutions is fixed to a certain input and output size of the Images.
     """
     def __init__(self, posenet, classes=3, droprate=0.5, pretrained=True,
-      feat_dim=2048, filter_nans=False):
+      feat_dim=2048, filter_nans=False, input_size=(224,224)):
         super(MultiTask, self).__init__()
         self.posenet = posenet
         """
         TODO Experiment with model architecture
         Inspired by U-Net
         """
+        self.input_size = input_size
         self.semantic_layer0 = nn.ConvTranspose2d(64, classes, kernel_size=(6,5), stride=4, padding=1, bias=False)
         self.semantic_layer1 = nn.ConvTranspose2d(64, 64, kernel_size=7, stride=1, padding=3, bias=False)
         self.semantic_layer2 = nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1)
@@ -400,27 +424,48 @@ class MultiTask(nn.Module):
         
     def forward(self, x):
         s = x.size()
-        x = x.view(-1, 3, 256, 455)
+        x = x.view(-1, 3, self.input_size[0], self.input_size[1])
         x0 = x
 
+        s1 = x.size()
+        #print(s1)
         x = self.posenet.feature_extractor.conv1(x)
         x = self.posenet.feature_extractor.bn1(x)
         x = self.posenet.feature_extractor.relu(x)
         x = self.posenet.feature_extractor.maxpool(x)
         x1 = x
+        s2 = x.size()
+        #print(s2)
         x = self.posenet.feature_extractor.layer1(x)
         x2 = x
+        s3 = x.size()
+        #print(s3)
         x = self.posenet.feature_extractor.layer2(x)
         x3 = x
+        s4 = x.size()
+        #print(s4)
         x = self.posenet.feature_extractor.layer3(x)
         x4 = x
+        s5 = x.size()
+        #print(s5)
         x = self.posenet.feature_extractor.layer4(x)
         
         semantic = self.semantic_layer4(x)
+        semantic = nn.functional.interpolate(semantic, size=s5[2:4])
         semantic = self.semantic_layer3(semantic + x4)
+        semantic = nn.functional.interpolate(semantic, size=s4[2:4])
+        #print(semantic.size())
         semantic = self.semantic_layer2(semantic + x3)
+        semantic = nn.functional.interpolate(semantic, size=s3[2:4])
+        #print(semantic.size())
         semantic = self.semantic_layer1(semantic + x2)
+        semantic = nn.functional.interpolate(semantic, size=s2[2:4])
+        #print(semantic.size())
         semantic = self.semantic_layer0(semantic + x1)
+        semantic = nn.functional.interpolate(semantic, size=s1[2:4])
+        semantic.view(s[0],s[1],-1)
+        #print(semantic.size())
+        #print('Forward pass completed')
         
         poses = self.posenet.feature_extractor.avgpool(x)
         poses = poses.view(poses.size(0), -1)

@@ -7,8 +7,9 @@ import ntpath
 import random
 from common.pose_utils import process_poses_quaternion
 import transforms3d.quaternions as txq
-from dataset_loaders.utils import load_image
+from dataset_loaders.utils import load_image, single_channel_loader
 import os
+import ntpath
 
 def identity(x):
     return x
@@ -19,19 +20,23 @@ class camerapoint:
         self.rotation = rotation
         self.img_path = img_path
         self.pose = None
+        self.sem_path = None
         
     def set_pose(self, pose):
         self.pose = pose
+        
+    def set_sem_path(self, sem_path):
+        self.sem_path = sem_path
 
 
 class AachenDayNight(data.Dataset):
     
     def __init__(self, data_path, train, train_split=0.7, overfit=None,
                 seed=7,input_types='image', output_types='pose', real=False
-                ,transform=identity, scene='', target_transform=identity):
+                ,transform=identity, semantic_transform=identity, scene='', target_transform=identity):
         """
         seed=7, overfit=None, reduce_data=True,
-        transform=identity, semantic_transform=identity, 
+        transform=identity, 
         semantic_colorized_transform=identity, target_transform=identity, 
         vo_lib='orbslam', scene='', concatenate_inputs=False):
         """
@@ -46,7 +51,7 @@ class AachenDayNight(data.Dataset):
             'img' : transform, 
             #'right' : transform,
             #'label_colorized' : semantic_colorized_transform,
-            #'label' : semantic_transform,
+            'label' : semantic_transform,
             #'depth' : transform,
             'pose' : target_transform
         }
@@ -77,8 +82,10 @@ class AachenDayNight(data.Dataset):
         
         self.train_keys = None
         self.test_keys = None
-        files_exist = os.path.isfile('train_'+str(self.train_split)+'.txt')
+        train_file_name = os.path.join(data_path,'train_'+str(self.train_split)+'.txt')
+        files_exist = os.path.isfile(train_file_name)
         if not files_exist:
+            print('%s does not exist'%train_file_name)
             self._split_dataset(train_split, data_path)
         else:
             train_file = open(data_path+'train_'+str(self.train_split)+'.txt', 'r')
@@ -125,9 +132,21 @@ class AachenDayNight(data.Dataset):
             p = self.points[i]
             pose = process_poses_quaternion(np.asarray([p.position]), np.asarray([p.rotation]), mean_t, std_t, np.eye(3), np.zeros(3), np.ones(1))
             p.set_pose(pose)
+            
+        self.sem_labels = None
+        if 'label' in self.input_types or 'label' in self.output_types:
+            for key in self.points:
+                p = self.points[key]
+                sem_path = os.path.join(self.data_path, 'sem_labels', ntpath.basename(p.img_path).replace('.jpg','.png'))
+                if os.path.isfile(sem_path):
+                    p.set_sem_path(sem_path)
+                else:
+                    raise AssertionError('WARNING: SEMANTIC LABEL NOT FOUND')
+            print('All semantic labels successfully loaded')
         
         
     def _split_dataset(self, train_split, data_path):
+        print('Warning: Create new data split file')
         self.train_keys = random.sample(self.points.keys(), int(train_split*len(self.points.keys())))
         self.test_keys = [x for x in self.points.keys() if x not in self.train_keys]
         train_file = open(data_path+ 'train_'+str(train_split)+'.txt', 'w+')
@@ -146,24 +165,35 @@ class AachenDayNight(data.Dataset):
         inps = []
         outs = []
         for inp in self.input_types:
-            if inp == 'image':
+            if inp == 'img':
                 img_path = os.path.join(self.data_path,'images_upright',point.img_path)
                 img = load_image(img_path)
                 img = None if img is None else self.transforms['img'](img)
                 inps.append(img)
+            elif inp == 'label':
+                img = single_channel_loader(point.sem_path)
+                img = None if img is None else self.transforms['label'](img)
+                inps.append(img)
             else:
-                raise NotImplementedError('Not implemented yet')
+                raise NotImplementedError('Not implemented yet (%s)'%str(inp))
         for out in self.output_types:
             if out == 'pose':
                 p = point.pose
                 p = None if p is None else self.transforms['pose'](p)
                 outs.append(p)
+            elif out == 'label':
+                #print('GET SEMANTIC LAB')
+                img = single_channel_loader(point.sem_path)
+                #print(img.shape)
+                img = None if img is None else self.transforms['label'](img)
+                #print(img.shape)
+                outs.append(img)
             else:
                 raise NotImplementedError('Not implemented yet')
                 
         
         
-        return inps[0], outs[0]
+        return inps[0] if len(inps) <= 1 else inps, outs[0] if len(outs) <= 1 else outs
         
         
     
@@ -173,7 +203,10 @@ class AachenDayNight(data.Dataset):
     
 def main():
     loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', True)
-    loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', False)
+    loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', False, input_types=['image', 'label'])
+    x = loader[20]
+    for i in x:
+        print(type(i))
     loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', True, train_split=0.8)
     loader[100]
     loader[0]

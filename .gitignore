@@ -254,3 +254,4 @@ tags
 
 dataset_loaders/aachen-old.py
 scripts/slurm*.out
+scripts/logs/*

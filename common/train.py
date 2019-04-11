@@ -67,7 +67,7 @@ def safe_collate(batch):
 class Trainer(object):
     def __init__(self, model, optimizer, train_criterion, config_file, experiment,
                  train_dataset, val_dataset, device, checkpoint_file=None,
-                 resume_optim=False, val_criterion=None):
+                 resume_optim=False, val_criterion=None, visdom_server='http://localhost'):
         """
         General purpose training script
         :param model: Network model
@@ -118,14 +118,22 @@ class Trainer(object):
         self.config['print_freq'] = section.getint('print_freq')
 
         self.logdir = osp.join(os.getcwd(), 'logs', self.experiment)
-        if not osp.isdir(self.logdir):
-            os.makedirs(self.logdir)
+        if osp.isdir(self.logdir):
+            i = 1
+            tmp_l = self.logdir
+            while(osp.isdir(tmp_l)):
+                tmp_e = self.experiment+ '_version' + str(i)
+                tmp_l = osp.join(os.getcwd(), 'logs', tmp_e)
+                i += 1
+            self.experiment = tmp_e
+            self.logdir = tmp_l
+        os.makedirs(self.logdir)
 
         if self.config['log_visdom']:
             # start plots
-            self.vis_env = experiment
+            self.vis_env = self.experiment
             self.loss_win = 'loss_win'
-            self.vis = Visdom()
+            self.vis = Visdom(server=visdom_server)
             self.vis.line(X=np.zeros((1, 2)), Y=np.zeros((1, 2)), win=self.loss_win,
                           opts={'legend': ['train_loss', 'val_loss'], 'xlabel': 'epochs',
                                 'ylabel': 'loss'}, env=self.vis_env)
@@ -160,7 +168,9 @@ class Trainer(object):
         print('Experiment: {:s}'.format(self.experiment))
         for k, v in list(self.config.items()):
             print('{:s}: {:s}'.format(k, str(v)))
-        print('Using GPU {:s} / {:d}'.format(device if device is not None else 'N/A', torch.cuda.device_count()))
+        print('Using GPU {:s} / {:d}'.format(device if device is not None else str(torch.cuda.current_device()), torch.cuda.device_count()))
+        for i in range(torch.cuda.device_count()):
+            print('Device %d: %s \tCapability: %s'%(i, torch.cuda.get_device_name(i), torch.cuda.get_device_capability(i)))
         print('---------------------------------------')
 
         # set random seed
@@ -213,7 +223,10 @@ class Trainer(object):
                 self.extra_criterion.cuda()
 
     def save_checkpoint(self, epoch):
-        filename = osp.join(self.logdir, 'epoch_{:03d}.pth.tar'.format(epoch))
+        if epoch is None:
+            filename = osp.join(self.logdir, 'final_model.pth.tar'.format(epoch))
+        else:
+            filename = osp.join(self.logdir, 'epoch_{:03d}.pth.tar'.format(epoch))
         checkpoint_dict =\
             {'epoch': epoch, 'model_state_dict': self.model.state_dict(),
              'optim_state_dict': self.optimizer.learner.state_dict(),
@@ -409,7 +422,7 @@ class Trainer(object):
 
         # Save final checkpoint
         epoch = self.config['n_epochs']
-        self.save_checkpoint(epoch)
+        self.save_checkpoint(epoch=None)
         print('Epoch {:d} checkpoint saved'.format(epoch))
         if self.config['log_visdom']:
             self.vis.save(envs=[self.vis_env])
@@ -452,6 +465,8 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
             else:
                 target_var = Variable(target, requires_grad=False)
 
+            #print(output.shape)
+            #print(target_var.shape)
             loss = criterion(output, target_var)
 
             if activation_maps:

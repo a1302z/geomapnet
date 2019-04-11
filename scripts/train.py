@@ -52,6 +52,7 @@ parser.add_argument('--overfit', type=int, default=None, help='Reduce dataset to
 parser.add_argument('--uncertainty_criterion', action='store_true', help='Use criterion which weighs losses with uncertainty')
 parser.add_argument('--learn_direct_sigma', action='store_true', help='Learn sigma directly instead of log of sigma')
 parser.add_argument('--init_seed', type=int, default=0, help='Set seed for random initialization of model')
+parser.add_argument('--server', type=str, default='http://localhost', help='Set visdom server address')
 
 args = parser.parse_args()
 
@@ -63,6 +64,13 @@ optim_config = {k: json.loads(v) for k, v in list(section.items()) if k != 'opt'
 opt_method = section['opt']
 lr = optim_config.pop('lr')
 weight_decay = optim_config.pop('weight_decay')
+
+
+data_dir = osp.join('..', 'data', args.dataset)
+stats_file = osp.join(data_dir, args.scene, 'stats.txt')
+stats = np.loadtxt(stats_file)
+crop_size_file = osp.join(data_dir, 'crop_size.txt')
+crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 
 section = settings['hyperparameters']
 dropout = section.getfloat('dropout')
@@ -97,6 +105,17 @@ if det_seed >= 0:
 feature_extractor = models.resnet34(pretrained=True)
 posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=True,
                   filter_nans=(args.model == 'mapnet++'))
+if args.model in ['multitask', 'semanticOutput']:
+    classes = None
+    input_size = None
+    if args.dataset == 'DeepLoc':
+        classes = 10
+        input_size = crop_size #(256, 455)
+    elif args.dataset == 'AachenDayNight':
+        classes = 65
+        input_size = crop_size #(224,224)
+    else:
+        raise NotImplementedError('Classes for dataset not specified')
 if args.model == 'posenet':
     model = posenet
 elif 'mapnet' in args.model or args.model == 'semanticV0':
@@ -117,9 +136,10 @@ elif args.model == 'semanticV4':
                   filter_nans=(args.model == 'mapnet++'))
     model = MapNet(mapnet=posenetv2)
 elif args.model == 'multitask':
-    model = MultiTask(posenet=posenet, classes=10)
+    
+    model = MultiTask(posenet=posenet, classes=classes, input_size=input_size)
 elif args.model == 'semanticOutput':
-    model = SemanticOutput(posenet=posenet, classes=10)
+    model = SemanticOutput(posenet=posenet, classes=classes, input_size=input_size)
 else:
     raise NotImplementedError
 
@@ -165,13 +185,11 @@ if args.learn_sigma and hasattr(train_criterion, 'sas'):
 optimizer = Optimizer(params=param_list, method=opt_method, base_lr=lr,
                       weight_decay=weight_decay, **optim_config)
 
-data_dir = osp.join('..', 'data', args.dataset)
-stats_file = osp.join(data_dir, args.scene, 'stats.txt')
-stats = np.loadtxt(stats_file)
-crop_size_file = osp.join(data_dir, 'crop_size.txt')
-crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
+
 # transformers
-tforms = [transforms.Resize(256)]
+resize = int(max(crop_size))
+tforms = [transforms.Resize(resize)]
+#if args.dataset == 'AachenDayNight':
 tforms.append(transforms.CenterCrop(crop_size))
 if color_jitter > 0:
     assert color_jitter <= 1.0
@@ -184,11 +202,13 @@ data_transform = transforms.Compose(tforms)
 target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
 
 int_semantic_transform = transforms.Compose([
-        transforms.Resize(256,0), #Nearest interpolation
+        transforms.Resize(resize,0), #Nearest interpolation
+        transforms.CenterCrop(crop_size),
         transforms.Lambda(lambda pic: torch.from_numpy(np.array(pic, np.int64, copy=False)))
     ])
 float_semantic_transform = transforms.Compose([
-        transforms.Resize(256,0), #Nearest interpolation
+        transforms.Resize(resize,0), #Nearest interpolation
+        transforms.CenterCrop(crop_size),
         transforms.ToTensor()
     ])
 
@@ -196,6 +216,23 @@ float_semantic_transform = transforms.Compose([
 data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
 kwargs = dict(scene=args.scene, data_path=data_dir, transform=data_transform,
               target_transform=target_transform, seed=seed)
+#default
+input_types = ['img']
+output_types = ['pose']
+if args.model == 'semanticV0':
+    input_types = ['label_colorized']
+elif args.model == 'semanticV4':
+    input_types = ['img', 'label']
+elif args.model == 'semanticOutput':
+    output_types = 'label'
+elif 'semantic' in args.model:
+     input_types = ['img', 'label_colorized']
+elif 'multitask' in args.model:
+      output_types = ['pose', 'label']
+semantic_transform = (
+            float_semantic_transform 
+            if 'semanticV' in args.model else 
+            int_semantic_transform)
 if args.model == 'posenet':
     if args.dataset == '7Scenes':
         from dataset_loaders.seven_scenes import SevenScenes
@@ -203,20 +240,7 @@ if args.model == 'posenet':
         val_set = SevenScenes(train=False, **kwargs)
     elif args.dataset == 'DeepLoc':
         
-        #default
-        input_types = ['left']
-        output_types = ['pose']
-        
-        if args.model == 'semanticV0':
-            input_types = ['label_colorized']
-        elif args.model == 'semanticV4':
-            input_types = ['left', 'label']
-        elif args.model == 'semanticOutput':
-            output_types = 'label'
-        elif 'semantic' in args.model:
-            input_types = ['left', 'label_colorized']
-        elif 'multitask' in args.model:
-            output_types = ['pose', 'label']
+
         
         semantic_transform = (
             float_semantic_transform 
@@ -239,6 +263,14 @@ if args.model == 'posenet':
         data_path, train, train_split=0.7,    
                 input_types='image', output_types='pose', real=False
         """
+        kwargs = dict(kwargs,
+                      overfit=args.overfit,
+                      semantic_transform=semantic_transform,
+                      #semantic_colorized_transform=float_semantic_transform,
+                      input_types=input_types, 
+                      output_types=output_types,
+                      #concatenate_inputs=True
+                     )
         from dataset_loaders.aachen import AachenDayNight
         train_set = DeepLoc(train=True, **kwargs)
         val_set = DeepLoc(train=False, **kwargs)
@@ -253,26 +285,6 @@ elif 'mapnet' in args.model or 'semantic' in args.model or 'multitask' in args.m
                   variable_skip=variable_skip)
     if args.dataset == 'DeepLoc':
                 
-        #default
-        input_types = ['left']
-        output_types = ['pose']
-        
-        if args.model == 'semanticV0':
-            input_types = ['label_colorized']
-        elif args.model == 'semanticV4':
-            input_types = ['left', 'label']
-        elif args.model == 'semanticOutput':
-            output_types = 'label'
-        elif 'semantic' in args.model:
-            input_types = ['left', 'label_colorized']
-        elif 'multitask' in args.model:
-            output_types = ['pose', 'label']
-        
-        semantic_transform = (
-            float_semantic_transform 
-            if 'semanticV' in args.model else 
-            int_semantic_transform)
-        
         kwargs = dict(kwargs,
                       overfit=args.overfit,
                       semantic_transform=semantic_transform,
@@ -280,6 +292,16 @@ elif 'mapnet' in args.model or 'semantic' in args.model or 'multitask' in args.m
                       input_types=input_types, 
                       output_types=output_types,
                       concatenate_inputs=True)
+        
+    elif args.dataset == 'AachenDayNight':
+        kwargs = dict(kwargs,
+                      overfit=args.overfit,
+                      semantic_transform=semantic_transform,
+                      #semantic_colorized_transform=float_semantic_transform,
+                      input_types=input_types, 
+                      output_types=output_types,
+                      #concatenate_inputs=True
+                     )
         
     if '++' in args.model:
         train_set = MFOnline(
@@ -313,7 +335,7 @@ if det_seed >= 0:
 experiment_name += args.suffix
 trainer = Trainer(model, optimizer, train_criterion, args.config_file,
                   experiment_name, train_set, val_set, device=args.device,
-                  checkpoint_file=args.checkpoint,
+                  checkpoint_file=args.checkpoint, visdom_server = args.server,
                   resume_optim=args.resume_optim, val_criterion=val_criterion)
 lstm = args.model == 'vidloc'
 trainer.train_val(lstm=lstm, dual_target='multitask' in args.model)
