@@ -15,7 +15,8 @@ script to calculate pose translation stats (run first for every dataset)
 # config
 parser = argparse.ArgumentParser(
     description='Calculate pose translation stats')
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'AachenDayNight'),
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'AachenDayNight',
+                                                   'CambridgeLandmarks'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, default='', help='Scene name')
 args = parser.parse_args()
@@ -26,7 +27,7 @@ data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
 # training split
 kwargs = dict(scene=args.scene, data_path=data_dir, train=True, real=False, seed=7)
 
-if args.dataset == 'DeepLoc' or args.dataset == 'AachenDayNight':
+if args.dataset in ['DeepLoc', 'AachenDayNight', 'CambridgeLandmarks']:
     kwargs['input_types'] = []
 else:
     kwargs['skip_images'] = True
@@ -43,6 +44,9 @@ elif args.dataset == 'RobotCar':
 elif args.dataset == 'AachenDayNight':
     from dataset_loaders.aachen import AachenDayNight
     dset = AachenDayNight(**kwargs)
+elif args.dataset == 'CambridgeLandmarks':
+    from dataset_loaders.cambridge import Cambridge
+    dset = Cambridge(**kwargs)
 else:
     raise NotImplementedError
 

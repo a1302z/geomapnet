@@ -33,7 +33,8 @@ if not DISPLAY:
 
 # config
 parser = argparse.ArgumentParser(description='Evaluation script for pose regression networks')
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'AachenDayNight'),
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'AachenDayNight', 
+                                                   'CambridgeLandmarks'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, default='', help='Scene name')
 parser.add_argument('--weights', type=str, help='trained weights to load')
@@ -76,10 +77,28 @@ if (args.model.find('mapnet') >= 0) or args.pose_graph or (args.model.find('sema
         saq = section.getfloat('s_abs_rot', 1)
         srx = section.getfloat('s_rel_trans', 20)
         srq = section.getfloat('s_rel_rot', 20)
+        
+data_dir = osp.join('..', 'data', args.dataset)
+stats_filename = osp.join(data_dir, args.scene, 'stats.txt')
+stats = np.loadtxt(stats_filename)
+crop_size_file = osp.join(data_dir, 'crop_size.txt')
+crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
+resize = int(max(crop_size))
 
 # model
 feature_extractor = models.resnet34(pretrained=False)
 posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=False)
+if args.model in ['multitask', 'semanticOutput']:
+    classes = None
+    input_size = None
+    if args.dataset == 'DeepLoc':
+        classes = 10
+        input_size = crop_size #(256, 455)
+    elif args.dataset == 'AachenDayNight':
+        classes = 65
+        input_size = crop_size #(224,224)
+    else:
+        raise NotImplementedError('Classes for dataset not specified')
 if (args.model.find('mapnet') >= 0) or args.pose_graph  or args.model == 'semanticV0':
     model = MapNet(mapnet=posenet)
 elif args.model == 'semanticV1':
@@ -96,9 +115,9 @@ elif args.model == 'semanticV4':
                   filter_nans=(args.model == 'mapnet++'))
     model = MapNet(mapnet=posenetv2)
 elif args.model == 'multitask':
-    model = MultiTask(posenet=posenet, classes=10)
+    model = MultiTask(posenet=posenet, classes=classes, input_size=input_size)
 elif args.model == 'semanticOutput':
-    model = SemanticOutput(posenet=posenet, classes=10)
+    model = SemanticOutput(posenet=posenet, classes=classes, input_size=input_size)
 else:
     model = posenet
 model.eval()
@@ -125,13 +144,8 @@ else:
     print('Could not load weights from {:s}'.format(weights_filename))
     sys.exit(-1)
 
-data_dir = osp.join('..', 'data', args.dataset)
-stats_filename = osp.join(data_dir, args.scene, 'stats.txt')
-stats = np.loadtxt(stats_filename)
+
 # transformer
-crop_size_file = osp.join(data_dir, 'crop_size.txt')
-crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
-resize = int(max(crop_size))
 data_transform = transforms.Compose([
     transforms.Resize(resize),
     transforms.CenterCrop(crop_size),
@@ -141,10 +155,12 @@ target_transform = transforms.Lambda(lambda x: torch.from_numpy(x).float())
 
 int_semantic_transform = transforms.Compose([
         transforms.Resize(resize,0), #Nearest interpolation
+        transforms.CenterCrop(crop_size),
         transforms.Lambda(lambda pic: torch.from_numpy(np.array(pic, np.int64, copy=False)))
     ])
 float_semantic_transform = transforms.Compose([
         transforms.Resize(resize,0), #Nearest interpolation
+        transforms.CenterCrop(crop_size),
         transforms.ToTensor()
     ])
 # read mean and stdev for un-normalizing predictions
@@ -161,21 +177,23 @@ data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
 kwargs = dict(scene=args.scene, data_path=data_dir, train=train,
               transform=data_transform, target_transform=target_transform, seed=seed)
 
-if args.dataset == 'DeepLoc':
-        #default
-        input_types = ['left']
-        output_types = ['pose']
+
+#default
+input_types = ['img']
+output_types = ['pose']
         
-        if args.model == 'semanticV0':
-            input_types = ['label_colorized']
-        elif args.model == 'semanticOutput':
-            output_types = ['label']
-        elif args.model == 'semanticV4':
-            input_types = ['left', 'label']
-        elif 'semantic' in args.model:
-            input_types = ['left', 'label_colorized']
-        elif 'multitask' in args.model:
-            output_types = ['pose', 'label']
+if args.model == 'semanticV0':
+    input_types = ['label_colorized']
+elif args.model == 'semanticOutput':
+    output_types = ['label']
+elif args.model == 'semanticV4':
+    input_types = ['img', 'label']
+elif 'semantic' in args.model:
+    input_types = ['img', 'label_colorized']
+elif 'multitask' in args.model:
+    output_types = ['pose', 'label']
+if args.dataset == 'DeepLoc':
+        
         #print("Input types: %s\nOutput types: %s"%(input_types, output_types))
         
         semantic_transform = (
@@ -190,6 +208,20 @@ if args.dataset == 'DeepLoc':
                       input_types=input_types, 
                       output_types=output_types,
                       concatenate_inputs=True)
+elif args.dataset in ['AachenDayNight', 'CambridgeLandmarks']:
+    semantic_transform = (
+            float_semantic_transform 
+            if 'semanticV' in args.model else 
+            int_semantic_transform)
+        
+    kwargs = dict(kwargs,
+                      overfit=args.overfit,
+                      semantic_transform=semantic_transform,
+                      #semantic_colorized_transform=float_semantic_transform,
+                      input_types=input_types, 
+                      output_types=output_types,
+                      #concatenate_inputs=True
+                 )
 
 if (args.model.find('mapnet') >= 0) or args.pose_graph or (args.model.find('semantic') >= 0) or (args.model.find('multitask') >= 0):
     if args.pose_graph:
@@ -215,6 +247,9 @@ elif args.dataset == 'RobotCar':
 elif args.dataset == 'AachenDayNight':
     from dataset_loaders.aachen import AachenDayNight
     data_set = AachenDayNight(**kwargs)
+elif args.dataset == 'CambridgeLandmarks':
+    from dataset_loaders.cambridge import Cambridge
+    data_set = Cambridge(**kwargs)
     L = len(data_set)
 else:
     raise NotImplementedError

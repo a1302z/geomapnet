@@ -27,7 +27,7 @@ Main training script for MapNet
 
 parser = argparse.ArgumentParser(description='Training script for PoseNet and'
                                              'MapNet variants')
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'AachenDayNight'),
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'AachenDayNight', 'CambridgeLandmarks'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, default='', help='Scene name')
 parser.add_argument('--config_file', type=str, help='configuration file')
@@ -53,6 +53,7 @@ parser.add_argument('--uncertainty_criterion', action='store_true', help='Use cr
 parser.add_argument('--learn_direct_sigma', action='store_true', help='Learn sigma directly instead of log of sigma')
 parser.add_argument('--init_seed', type=int, default=0, help='Set seed for random initialization of model')
 parser.add_argument('--server', type=str, default='http://localhost', help='Set visdom server address')
+parser.add_argument('--crop_size_file', type=str, default='crop_size.txt', help='Specify crop size file')
 
 args = parser.parse_args()
 
@@ -69,7 +70,7 @@ weight_decay = optim_config.pop('weight_decay')
 data_dir = osp.join('..', 'data', args.dataset)
 stats_file = osp.join(data_dir, args.scene, 'stats.txt')
 stats = np.loadtxt(stats_file)
-crop_size_file = osp.join(data_dir, 'crop_size.txt')
+crop_size_file = osp.join(data_dir, args.crop_size_file)
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 
 section = settings['hyperparameters']
@@ -189,6 +190,7 @@ optimizer = Optimizer(params=param_list, method=opt_method, base_lr=lr,
 # transformers
 resize = int(max(crop_size))
 tforms = [transforms.Resize(resize)]
+print('Cropping and resizing to %s'%str(crop_size))
 #if args.dataset == 'AachenDayNight':
 tforms.append(transforms.CenterCrop(crop_size))
 if color_jitter > 0:
@@ -272,8 +274,24 @@ if args.model == 'posenet':
                       #concatenate_inputs=True
                      )
         from dataset_loaders.aachen import AachenDayNight
-        train_set = DeepLoc(train=True, **kwargs)
-        val_set = DeepLoc(train=False, **kwargs)
+        train_set = AachenDayNight(train=True, **kwargs)
+        val_set = AachenDayNight(train=False, **kwargs)
+    elif args.dataset == 'CambridgeLandmarks':
+        """
+        data_path, train, train_split=0.7,    
+                input_types='image', output_types='pose', real=False
+        """
+        kwargs = dict(kwargs,
+                      overfit=args.overfit,
+                      semantic_transform=semantic_transform,
+                      #semantic_colorized_transform=float_semantic_transform,
+                      input_types=input_types, 
+                      output_types=output_types,
+                      #concatenate_inputs=True
+                     )
+        from dataset_loaders.cambridge import Cambridge
+        train_set = Cambridge(train=True, **kwargs)
+        val_set = Cambridge(train=False, **kwargs)
     elif args.dataset == 'RobotCar':
         from dataset_loaders.robotcar import RobotCar
         train_set = RobotCar(train=True, **kwargs)
@@ -293,7 +311,7 @@ elif 'mapnet' in args.model or 'semantic' in args.model or 'multitask' in args.m
                       output_types=output_types,
                       concatenate_inputs=True)
         
-    elif args.dataset == 'AachenDayNight':
+    elif args.dataset in ['AachenDayNight', 'CambridgeLandmarks']:
         kwargs = dict(kwargs,
                       overfit=args.overfit,
                       semantic_transform=semantic_transform,

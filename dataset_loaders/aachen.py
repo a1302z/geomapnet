@@ -9,7 +9,6 @@ from common.pose_utils import process_poses_quaternion
 import transforms3d.quaternions as txq
 from dataset_loaders.utils import load_image, single_channel_loader
 import os
-import ntpath
 
 def identity(x):
     return x
@@ -32,7 +31,7 @@ class camerapoint:
 class AachenDayNight(data.Dataset):
     
     def __init__(self, data_path, train, train_split=0.7, overfit=None,
-                seed=7,input_types='image', output_types='pose', real=False
+                seed=7,input_types='img', output_types='pose', real=False
                 ,transform=identity, semantic_transform=identity, scene='', target_transform=identity):
         """
         seed=7, overfit=None, reduce_data=True,
@@ -203,7 +202,7 @@ class AachenDayNight(data.Dataset):
     
 def main():
     loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', True)
-    loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', False, input_types=['image', 'label'])
+    loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', False, input_types=['img', 'label'])
     x = loader[20]
     for i in x:
         print(type(i))

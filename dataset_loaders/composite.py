@@ -68,6 +68,12 @@ class MF(data.Dataset):
                                 real=self.real, **kwargs)
             if self.include_vos and self.real:
                 self.gt_dset = AachenDayNight(*args, skip_images=True, real=False, **kwargs)
+        elif dataset == 'CambridgeLandmarks':
+            from dataset_loaders.cambridge import Cambridge
+            self.dset = Cambridge(*args, 
+                                real=self.real, **kwargs)
+            if self.include_vos and self.real:
+                self.gt_dset = Cambridge(*args, skip_images=True, real=False, **kwargs)
         else:
             raise NotImplementedError
 

@@ -6,5 +6,5 @@
 #SBATCH --time=30:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --mail-type=BEGIN,END,FAIL,TIME_LIMIT
-srun python train.py --dataset DeepLoc --model mapnet --config configs/mapnet.ini --server 'atcremers52.informatik.tu-muenchen.de'
+srun python train.py --dataset DeepLoc --model mapnet --config configs/mapnet.ini --server 'atbeetz18.informatik.tu-muenchen.de'
 

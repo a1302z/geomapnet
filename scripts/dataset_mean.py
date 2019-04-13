@@ -15,7 +15,8 @@ Computes the mean and std of pixels in a dataset
 """
 
 parser = argparse.ArgumentParser(description='Dataset images statistics')
-parser.add_argument('--dataset', type=str, choices=('7Scenes',  'DeepLoc', 'RobotCar', 'AachenDayNight'),
+parser.add_argument('--dataset', type=str, choices=('7Scenes',  'DeepLoc', 'RobotCar', 'AachenDayNight'
+                                                   , 'CambridgeLandmarks'),
                     help='Dataset', required=True)
 parser.add_argument('--scene', type=str, default='', help='Scene name', required=True)
 args = parser.parse_args()
@@ -42,6 +43,9 @@ elif args.dataset == 'DeepLoc':
 elif args.dataset == 'AachenDayNight':
     from dataset_loaders.aachen import AachenDayNight
     dset = AachenDayNight(**kwargs)
+elif args.dataset == 'CambridgeLandmarks':
+    from dataset_loaders.cambridge import Cambridge
+    dset = Cambridge(**kwargs)
 elif args.dataset == 'RobotCar':
     from dataset_loaders.robotcar import RobotCar
     dset = RobotCar(**kwargs)

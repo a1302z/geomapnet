@@ -18,6 +18,7 @@ import torch.utils.data
 from torch.utils.data.dataloader import default_collate
 import torch.cuda
 from torch.autograd import Variable
+import datetime
 
 
 def load_state_dict(model, state_dict):
@@ -166,6 +167,7 @@ class Trainer(object):
         # log all the command line options
         print('---------------------------------------')
         print('Experiment: {:s}'.format(self.experiment))
+        print('Start time: %s'%str(datetime.datetime.now()))
         for k, v in list(self.config.items()):
             print('{:s}: {:s}'.format(k, str(v)))
         print('Using GPU {:s} / {:d}'.format(device if device is not None else str(torch.cuda.current_device()), torch.cuda.device_count()))
