@@ -44,7 +44,7 @@ parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++', 'multit
                     'evluation process is the same and they only differ in the input weights'
                     'file')
 parser.add_argument('--device', type=str, default='0', help='GPU device(s)')
-parser.add_argument('--config_file', type=str, help='configuration file')
+#parser.add_argument('--config_file', type=str, help='configuration file')
 parser.add_argument('--val', action='store_true', help='Plot graph for val')
 parser.add_argument('--output_dir', type=str, default=None,
                     help='Output image directory')
@@ -55,12 +55,14 @@ parser.add_argument('--result_file', default=None, help='Give file where results
 parser.add_argument('--display_segmentation', type=int, default=0, help='Show n segmentation results')
 parser.add_argument('--show_class_dist', action='store_true', help='Create histogram of pixel classes in semantics')
 parser.add_argument('--print_every', type=int, default=200, help='Plot progress every n steps')
+parser.add_argument('--train_split', type=float, default=5./6., help='Define train/val split')
 args = parser.parse_args()
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device
 
 settings = configparser.ConfigParser()
-with open(args.config_file, 'r') as f:
+config_file = os.path.join(os.path.dirname(args.weights), 'config.ini')
+with open(config_file, 'r') as f:
     settings.read_file(f)
 seed = settings.getint('training', 'seed')
 section = settings['hyperparameters']
@@ -220,6 +222,7 @@ elif args.dataset in ['AachenDayNight', 'CambridgeLandmarks']:
                       #semantic_colorized_transform=float_semantic_transform,
                       input_types=input_types, 
                       output_types=output_types,
+                      train_split=args.train_split,
                       #concatenate_inputs=True
                  )
 
@@ -247,6 +250,7 @@ elif args.dataset == 'RobotCar':
 elif args.dataset == 'AachenDayNight':
     from dataset_loaders.aachen import AachenDayNight
     data_set = AachenDayNight(**kwargs)
+    L = len(data_set)
 elif args.dataset == 'CambridgeLandmarks':
     from dataset_loaders.cambridge import Cambridge
     data_set = Cambridge(**kwargs)
@@ -360,6 +364,7 @@ for batch_idx, (data, target) in enumerate(loader):
             **kwargs)
 
     # un-normalize the predicted and target translations
+    #print('Unnormalize: Mean: %s\tStd: %s'%(str(pose_m), str(pose_s)))
     output[:, :3] = (output[:, :3] * pose_s) + pose_m
     target[:, :3] = (target[:, :3] * pose_s) + pose_m
     #print(output.shape)
@@ -465,13 +470,15 @@ if args.output_dir is not None and not args.model == 'semanticOutput':
     ss = max(1, int(len(data_set) / 1000))  # 100 for stairs
     # scatter the points and draw connecting line
     x = np.vstack((pred_poses[::ss, 0].T, targ_poses[::ss, 0].T))
-    y = np.vstack((pred_poses[::ss, 1].T, targ_poses[::ss, 1].T))
+    y = np.vstack((pred_poses[::ss, 2].T, targ_poses[::ss, 2].T))
+    #for i in range(25):
+    #    print('Predicted: %s\tTarget: %s\Distance: %.2f'%(str(pred_poses[i,:3]), str(targ_poses[i,:3]), t_criterion(pred_poses[i,:3], targ_poses[i,:3])))
     if args.dataset != '7Scenes':  # 2D drawing
         ax.plot(x, y, c='b')
-        ax.scatter(x[0, :], y[0, :], c='r')
-        ax.scatter(x[1, :], y[1, :], c='g')
+        ax.scatter(x[0, :], y[0, :], c='r', s = 0.5)
+        ax.scatter(x[1, :], y[1, :], c='g', s = 0.5)
     else:
-        z = np.vstack((pred_poses[::ss, 2].T, targ_poses[::ss, 2].T))
+        z = np.vstack((pred_poses[::ss, 1].T, targ_poses[::ss, 1].T))
         for xx, yy, zz in zip(x.T, y.T, z.T):
             ax.plot(xx, yy, zs=zz, c='b')
         ax.scatter(x[0, :], y[0, :], zs=z[0, :], c='r', depthshade=0)

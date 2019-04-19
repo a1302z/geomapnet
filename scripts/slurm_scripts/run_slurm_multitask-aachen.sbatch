@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=multitask-aachendaynight
+#SBATCH --job-name=multitask-aachendaynight-lr1e-4
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=8GB
+#SBATCH --mem=2GB
 #SBATCH --time=30:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --mail-type=ALL

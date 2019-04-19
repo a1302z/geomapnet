@@ -19,6 +19,7 @@ from torch.utils.data.dataloader import default_collate
 import torch.cuda
 from torch.autograd import Variable
 import datetime
+import shutil
 
 
 def load_state_dict(model, state_dict):
@@ -118,7 +119,7 @@ class Trainer(object):
         self.config['log_visdom'] = section.getboolean('visdom')
         self.config['print_freq'] = section.getint('print_freq')
 
-        self.logdir = osp.join(os.getcwd(), 'logs', self.experiment)
+        self.logdir = osp.join(os.getcwd(), 'logs', self.experiment+'_version0')
         if osp.isdir(self.logdir):
             i = 1
             tmp_l = self.logdir
@@ -128,7 +129,12 @@ class Trainer(object):
                 i += 1
             self.experiment = tmp_e
             self.logdir = tmp_l
+        else:
+            self.experiment = self.experiment+'_version0'
+            
         os.makedirs(self.logdir)
+        shutil.copyfile(config_file, os.path.join(self.logdir, 'config.ini'))
+        
 
         if self.config['log_visdom']:
             # start plots

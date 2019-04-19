@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser(description='Dataset images statistics')
 parser.add_argument('--dataset', type=str, choices=('7Scenes',  'DeepLoc', 'RobotCar', 'AachenDayNight'
                                                    , 'CambridgeLandmarks'),
                     help='Dataset', required=True)
-parser.add_argument('--scene', type=str, default='', help='Scene name', required=True)
+parser.add_argument('--scene', type=str, default='', help='Scene name')
 args = parser.parse_args()
 
 data_dir = osp.join('..', 'data', args.dataset)
