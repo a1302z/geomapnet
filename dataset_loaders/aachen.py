@@ -33,7 +33,7 @@ class camerapoint:
 
 class AachenDayNight(data.Dataset):
     
-    def __init__(self, data_path, train, train_split=0.7, overfit=None,
+    def __init__(self, data_path, train, train_split=6, overfit=None,
                 seed=7,input_types='img', output_types='pose', real=False
                 ,transform=identity, semantic_transform=identity, scene='', target_transform=identity):
         """
@@ -61,7 +61,7 @@ class AachenDayNight(data.Dataset):
         ##TODO: remove hardcoded
         if overfit:
             print('Overfitting to %d points'%overfit)
-        filename = 'train.step.txt' if self.train or overfit else 'val.step.txt'
+        filename = 'train_step%d.txt'%train_split if self.train or overfit else 'val_step%d.txt'%train_split
         f = open(os.path.join(data_path,filename), 'r')
         lines = f.readlines()
         lines[3:] = [x.strip().split(' ') for x in lines[3:]]

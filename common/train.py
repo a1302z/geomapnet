@@ -144,11 +144,19 @@ class Trainer(object):
             self.vis.line(X=np.zeros((1, 2)), Y=np.zeros((1, 2)), win=self.loss_win,
                           opts={'legend': ['train_loss', 'val_loss'], 'xlabel': 'epochs',
                                 'ylabel': 'loss'}, env=self.vis_env)
+            
             if self.extra_criterion:
                 self.extra_loss_win = 'extra_' + self.loss_win
                 self.vis.line(X=np.zeros((1, 2)), Y=np.zeros((1, 2)), win=self.extra_loss_win,
                           opts={'legend': ['train_extra_loss', 'val_extra_loss'], 'xlabel': 'epochs',
                                 'ylabel': 'loss'}, env=self.vis_env) 
+            
+            self.multiloss_logging = 'multitask' in self.experiment
+            if self.multiloss_logging:
+                self.multi_losses = 'multilosses'
+                self.vis.line(X=np.zeros((1, 6)), Y=np.zeros((1, 6)), win=self.multi_losses,
+                          opts={'legend': ['t_loss_val','q_loss_val', 's_loss_val', 't_loss_train','q_loss_train', 's_loss_train'], 'xlabel': 'epochs',
+                                'ylabel': 'loss'}, env=self.vis_env)
             self.lr_win = 'lr_win'
             self.vis.line(X=np.zeros(1), Y=np.zeros(1), win=self.lr_win,
                           opts={'legend': ['learning_rate'], 'xlabel': 'epochs',
@@ -256,6 +264,9 @@ class Trainer(object):
                 val_loss = Logger.AverageMeter()
                 if self.extra_criterion:
                     val_extra_loss = Logger.AverageMeter()
+                if self.multiloss_logging:
+                    pose_loss_meter = Logger.AverageMeter()
+                    sem_loss_meter = Logger.AverageMeter()
                 self.model.eval()
                 end = time.time()
                 val_data_time = Logger.AverageMeter()
@@ -270,11 +281,13 @@ class Trainer(object):
                         loss, output = step_lstm(
                             data, self.model, self.config['cuda'], **kwargs)
                     else:
-                        loss, output = step_feedfwd(data, self.model, self.config['cuda'],
+                        loss, output, loss_list = step_feedfwd(data, self.model, self.config['cuda'],
                                                **kwargs)
 
                     val_loss.update(loss)
                     val_batch_time.update(time.time() - end)
+                    pose_loss_meter.update(loss_list[0])
+                    sem_loss_meter.update(loss_list[1])
                     
                     if self.extra_criterion:
                         dual_target = type(target) is list or type(target) is tuple
@@ -291,6 +304,8 @@ class Trainer(object):
                                 target_var = Variable(target, requires_grad=False)
 
                             extra_loss = self.extra_criterion(output, target_var)
+                            if type(extra_loss) is list:
+                                extra_loss = sum(extra_loss)
                             extra_loss = extra_loss.item()
                             val_extra_loss.update(extra_loss)   
 
@@ -326,6 +341,16 @@ class Trainer(object):
                     val_loss_avg = val_loss.avg
                     self.vis.line(X=np.asarray([epoch]),
                                   Y=np.asarray([val_loss_avg]), win=self.loss_win, name='val_loss',
+                                  update='append', env=self.vis_env)
+                    if self.multiloss_logging:
+                        self.vis.line(X=np.asarray([epoch]),
+                                  Y=np.asarray([loss_list[0].item()]), win=self.multi_losses, name='t_loss_val',
+                                  update='append', env=self.vis_env)
+                        self.vis.line(X=np.asarray([epoch]),
+                                  Y=np.asarray([loss_list[1].item()]), win=self.multi_losses, name='q_loss_val',
+                                  update='append', env=self.vis_env)
+                        self.vis.line(X=np.asarray([epoch]),
+                                  Y=np.asarray([loss_list[2].item()]), win=self.multi_losses, name='s_loss_val',
                                   update='append', env=self.vis_env)
                     
                     if self.extra_criterion:
@@ -365,7 +390,7 @@ class Trainer(object):
                     loss, output = step_lstm(
                         data, self.model, self.config['cuda'], **kwargs)
                 else:
-                    loss, output = step_feedfwd(data, self.model, self.config['cuda'],
+                    loss, output, loss_list = step_feedfwd(data, self.model, self.config['cuda'],
                                            **kwargs)
 
                 if self.extra_criterion:  
@@ -383,6 +408,8 @@ class Trainer(object):
                             target_var = Variable(target, requires_grad=False)
 
                         extra_loss = self.extra_criterion(output, target_var)
+                        if type(extra_loss) is list:
+                            extra_loss = sum(extra_loss)
                         extra_loss = extra_loss.item()
                     
                 train_batch_time.update(time.time() - end)
@@ -412,6 +439,17 @@ class Trainer(object):
                     if self.config['log_visdom']:
                         self.vis.line(X=np.asarray([epoch_count]),
                                       Y=np.asarray([loss]), win=self.loss_win, name='train_loss',
+                                      update='append', env=self.vis_env)
+                        
+                        if self.multiloss_logging:
+                            self.vis.line(X=np.asarray([epoch_count]),
+                                      Y=np.asarray([loss_list[0].item()]), win=self.multi_losses, name='t_loss_train',
+                                      update='append', env=self.vis_env)
+                            self.vis.line(X=np.asarray([epoch_count]),
+                                      Y=np.asarray([loss_list[1].item()]), win=self.multi_losses, name='q_loss_train',
+                                      update='append', env=self.vis_env)
+                            self.vis.line(X=np.asarray([epoch_count]),
+                                      Y=np.asarray([loss_list[2].item()]), win=self.multi_losses, name='s_loss_train',
                                       update='append', env=self.vis_env)
                         if self.extra_criterion:    
                             self.vis.line(X=np.asarray([epoch_count]),
@@ -475,7 +513,8 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
 
             #print(output.shape)
             #print(target_var.shape)
-            loss = criterion(output, target_var)
+            loss_list = criterion(output, target_var)
+            loss = sum(loss_list) if type(loss_list) is list else loss_list
 
             if activation_maps:
                 return loss, output
@@ -489,9 +528,9 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
                         model.parameters(), max_grad_norm)
                 optim.learner.step()
 
-            return loss.item(), output
+            return loss.item(), output, loss_list if type(loss_list) is list else None
         else:
-            return 0, output
+            return 0, output, None
 
 
 def step_lstm(data, model, cuda, target=None, criterion=None, optim=None,

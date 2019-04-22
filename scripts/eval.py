@@ -55,7 +55,6 @@ parser.add_argument('--result_file', default=None, help='Give file where results
 parser.add_argument('--display_segmentation', type=int, default=0, help='Show n segmentation results')
 parser.add_argument('--show_class_dist', action='store_true', help='Create histogram of pixel classes in semantics')
 parser.add_argument('--print_every', type=int, default=200, help='Plot progress every n steps')
-parser.add_argument('--train_split', type=float, default=5./6., help='Define train/val split')
 args = parser.parse_args()
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device
@@ -67,6 +66,7 @@ with open(config_file, 'r') as f:
 seed = settings.getint('training', 'seed')
 section = settings['hyperparameters']
 dropout = section.getfloat('dropout')
+train_split = section.getint('train_split', 6)
 if (args.model.find('mapnet') >= 0) or args.pose_graph or (args.model.find('semantic') >= 0) or (args.model.find('multitask') >= 0):
     steps = section.getint('steps')
     skip = section.getint('skip')

@@ -160,6 +160,7 @@ class MapNetCriterion(nn.Module):
         )
         
         loss_pose = (abs_loss + vo_loss)
+        loss_list = [t_loss, q_loss]
         
         if self.dual_target:
             s = sem_targ.size()
@@ -167,11 +168,12 @@ class MapNetCriterion(nn.Module):
             s_loss = self.sem_loss(sem_pred, sem_targ)
             
             loss_semantic = torch.exp(-self.sas) * s_loss + self.sas
+            loss_list.append(s_loss)
         else:
             loss_semantic = 0
         
-        loss = loss_pose + loss_semantic
-        return loss    
+        #loss = loss_pose + loss_semantic
+        return loss_list  
 
 
 class UncertainyCriterion(nn.Module):
@@ -253,6 +255,7 @@ class UncertainyCriterion(nn.Module):
                 vo_q_loss / (2 * self.srq * self.srq) +
                 torch.log(self.sax * self.saq * self.srx * self.srq)
             )
+        loss_list = [t_loss, q_loss]
         
         if self.dual_target:
             s = sem_targ.size()
@@ -264,13 +267,14 @@ class UncertainyCriterion(nn.Module):
             else:
                 loss_semantic = (s_loss / (self.sas * self.sas) + 
                              torch.log(self.sas))
+            loss_list.append(s_loss)
         else:
             loss_semantic = 0
         
         
-        loss = loss_pose + loss_semantic
-
-        return loss
+        #loss = loss_pose + loss_semantic
+        
+        return loss_list
 
 class MapNetOnlineCriterion(nn.Module):
     def __init__(self, t_loss_fn=nn.L1Loss(), q_loss_fn=nn.L1Loss(), sax=0.0,

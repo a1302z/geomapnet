@@ -54,7 +54,6 @@ parser.add_argument('--learn_direct_sigma', action='store_true', help='Learn sig
 parser.add_argument('--init_seed', type=int, default=0, help='Set seed for random initialization of model')
 parser.add_argument('--server', type=str, default='http://localhost', help='Set visdom server address')
 parser.add_argument('--crop_size_file', type=str, default='crop_size.txt', help='Specify crop size file')
-parser.add_argument('--train_split', type=float, default=5./6., help='Define train/val split')
 
 args = parser.parse_args()
 
@@ -79,6 +78,7 @@ dropout = section.getfloat('dropout')
 color_jitter = section.getfloat('color_jitter', 0)
 sax = section.getfloat('beta_translation', 0.0)
 saq = section.getfloat('beta')
+train_split = section.getint('train_split', 6)
 if args.model.find('mapnet') >= 0 or args.model.find('semantic') >= 0 or args.model.find('multitask') >= 0:
     skip = section.getint('skip')
     real = section.getboolean('real')
@@ -272,7 +272,7 @@ if args.model == 'posenet':
                       #semantic_colorized_transform=float_semantic_transform,
                       input_types=input_types, 
                       output_types=output_types,
-                      train_split=args.train_split,
+                      train_split=train_split,
                       #concatenate_inputs=True
                      )
         from dataset_loaders.aachen import AachenDayNight
@@ -320,7 +320,7 @@ elif 'mapnet' in args.model or 'semantic' in args.model or 'multitask' in args.m
                       #semantic_colorized_transform=float_semantic_transform,
                       input_types=input_types, 
                       output_types=output_types,
-                      train_split=args.train_split,
+                      train_split=train_split,
                       #concatenate_inputs=True
                      )
         
