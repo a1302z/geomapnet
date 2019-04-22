@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=multitask-aachendaynight-uncertainty
+#SBATCH --job-name=multitask-aachendaynight-uncertainty-1e-4
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=4GB

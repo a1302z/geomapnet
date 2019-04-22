@@ -272,9 +272,9 @@ class UncertainyCriterion(nn.Module):
             loss_semantic = 0
         
         
-        #loss = loss_pose + loss_semantic
+        loss = loss_pose + loss_semantic
         
-        return loss_list
+        return loss, loss_list
 
 class MapNetOnlineCriterion(nn.Module):
     def __init__(self, t_loss_fn=nn.L1Loss(), q_loss_fn=nn.L1Loss(), sax=0.0,

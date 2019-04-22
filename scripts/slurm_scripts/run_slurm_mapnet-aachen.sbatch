@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=mapnet-aachendaynight-uncertainty
+#SBATCH --job-name=mapnet-aachendaynight-uncertainty-lr1e-4
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8GB

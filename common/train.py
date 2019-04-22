@@ -151,11 +151,15 @@ class Trainer(object):
                           opts={'legend': ['train_extra_loss', 'val_extra_loss'], 'xlabel': 'epochs',
                                 'ylabel': 'loss'}, env=self.vis_env) 
             
-            self.multiloss_logging = 'multitask' in self.experiment
+            self.multiloss_logging = 'multitask' in self.experiment or 'mapnet' in self.experiment
             if self.multiloss_logging:
                 self.multi_losses = 'multilosses'
-                self.vis.line(X=np.zeros((1, 6)), Y=np.zeros((1, 6)), win=self.multi_losses,
-                          opts={'legend': ['t_loss_val','q_loss_val', 's_loss_val', 't_loss_train','q_loss_train', 's_loss_train'], 'xlabel': 'epochs',
+                num = 6 if 'multitask' in self.experiment else 4
+                names = ['t_loss_val','q_loss_val', 's_loss_val', 't_loss_train','q_loss_train', 's_loss_train']
+                if 'mapnet' in self.experiment:
+                    names = names[0:2]+names[3:5]
+                self.vis.line(X=np.zeros((1, num)), Y=np.zeros((1, num)), win=self.multi_losses,
+                          opts={'legend': names, 'xlabel': 'epochs',
                                 'ylabel': 'loss'}, env=self.vis_env)
             self.lr_win = 'lr_win'
             self.vis.line(X=np.zeros(1), Y=np.zeros(1), win=self.lr_win,
@@ -264,9 +268,6 @@ class Trainer(object):
                 val_loss = Logger.AverageMeter()
                 if self.extra_criterion:
                     val_extra_loss = Logger.AverageMeter()
-                if self.multiloss_logging:
-                    pose_loss_meter = Logger.AverageMeter()
-                    sem_loss_meter = Logger.AverageMeter()
                 self.model.eval()
                 end = time.time()
                 val_data_time = Logger.AverageMeter()
@@ -286,8 +287,6 @@ class Trainer(object):
 
                     val_loss.update(loss)
                     val_batch_time.update(time.time() - end)
-                    pose_loss_meter.update(loss_list[0])
-                    sem_loss_meter.update(loss_list[1])
                     
                     if self.extra_criterion:
                         dual_target = type(target) is list or type(target) is tuple
@@ -303,9 +302,7 @@ class Trainer(object):
                             else:
                                 target_var = Variable(target, requires_grad=False)
 
-                            extra_loss = self.extra_criterion(output, target_var)
-                            if type(extra_loss) is list:
-                                extra_loss = sum(extra_loss)
+                            extra_loss, _ = self.extra_criterion(output, target_var)
                             extra_loss = extra_loss.item()
                             val_extra_loss.update(extra_loss)   
 
@@ -344,13 +341,14 @@ class Trainer(object):
                                   update='append', env=self.vis_env)
                     if self.multiloss_logging:
                         self.vis.line(X=np.asarray([epoch]),
-                                  Y=np.asarray([loss_list[0].item()]), win=self.multi_losses, name='t_loss_val',
+                                  Y=np.asarray([loss_list[0]]), win=self.multi_losses, name='t_loss_val',
                                   update='append', env=self.vis_env)
                         self.vis.line(X=np.asarray([epoch]),
-                                  Y=np.asarray([loss_list[1].item()]), win=self.multi_losses, name='q_loss_val',
+                                  Y=np.asarray([loss_list[1]]), win=self.multi_losses, name='q_loss_val',
                                   update='append', env=self.vis_env)
-                        self.vis.line(X=np.asarray([epoch]),
-                                  Y=np.asarray([loss_list[2].item()]), win=self.multi_losses, name='s_loss_val',
+                        if 'multitask' in self.experiment:
+                            self.vis.line(X=np.asarray([epoch]),
+                                  Y=np.asarray([loss_list[2]]), win=self.multi_losses, name='s_loss_val',
                                   update='append', env=self.vis_env)
                     
                     if self.extra_criterion:
@@ -407,9 +405,7 @@ class Trainer(object):
                         else:
                             target_var = Variable(target, requires_grad=False)
 
-                        extra_loss = self.extra_criterion(output, target_var)
-                        if type(extra_loss) is list:
-                            extra_loss = sum(extra_loss)
+                        extra_loss, _ = self.extra_criterion(output, target_var)
                         extra_loss = extra_loss.item()
                     
                 train_batch_time.update(time.time() - end)
@@ -443,13 +439,14 @@ class Trainer(object):
                         
                         if self.multiloss_logging:
                             self.vis.line(X=np.asarray([epoch_count]),
-                                      Y=np.asarray([loss_list[0].item()]), win=self.multi_losses, name='t_loss_train',
+                                      Y=np.asarray([loss_list[0]]), win=self.multi_losses, name='t_loss_train',
                                       update='append', env=self.vis_env)
                             self.vis.line(X=np.asarray([epoch_count]),
-                                      Y=np.asarray([loss_list[1].item()]), win=self.multi_losses, name='q_loss_train',
+                                      Y=np.asarray([loss_list[1]]), win=self.multi_losses, name='q_loss_train',
                                       update='append', env=self.vis_env)
-                            self.vis.line(X=np.asarray([epoch_count]),
-                                      Y=np.asarray([loss_list[2].item()]), win=self.multi_losses, name='s_loss_train',
+                            if 'multitask' in self.experiment:
+                                self.vis.line(X=np.asarray([epoch_count]),
+                                      Y=np.asarray([loss_list[2]]), win=self.multi_losses, name='s_loss_train',
                                       update='append', env=self.vis_env)
                         if self.extra_criterion:    
                             self.vis.line(X=np.asarray([epoch_count]),
@@ -513,8 +510,8 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
 
             #print(output.shape)
             #print(target_var.shape)
-            loss_list = criterion(output, target_var)
-            loss = sum(loss_list) if type(loss_list) is list else loss_list
+            loss, loss_list = criterion(output, target_var)
+            
 
             if activation_maps:
                 return loss, output
@@ -526,9 +523,10 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
                 if max_grad_norm > 0.0:
                     torch.nn.utils.clip_grad_norm_(
                         model.parameters(), max_grad_norm)
+                
                 optim.learner.step()
 
-            return loss.item(), output, loss_list if type(loss_list) is list else None
+            return loss.item(), output, [i.item() for i in loss_list] if type(loss_list) is list else None
         else:
             return 0, output, None
 

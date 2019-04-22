@@ -222,7 +222,7 @@ elif args.dataset in ['AachenDayNight', 'CambridgeLandmarks']:
                       #semantic_colorized_transform=float_semantic_transform,
                       input_types=input_types, 
                       output_types=output_types,
-                      train_split=args.train_split,
+                      train_split=train_split,
                       #concatenate_inputs=True
                  )
 
@@ -301,7 +301,7 @@ for batch_idx, (data, target) in enumerate(loader):
 
     # output : 1 x 6 or 1 x STEPS x 6
     #print("Data size: %s"%str(data.size()))
-    _, output = step_feedfwd(data, model, CUDA, train=False)
+    _, output, _ = step_feedfwd(data, model, CUDA, train=False)
     
     
 
