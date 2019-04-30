@@ -61,7 +61,10 @@ class AachenDayNight(data.Dataset):
         ##TODO: remove hardcoded
         if overfit:
             print('Overfitting to %d points'%overfit)
-        filename = 'train_step%d.txt'%train_split if self.train or overfit else 'val_step%d.txt'%train_split
+        if train_split > 0:
+            filename = 'train_step%d.txt'%train_split if self.train or overfit else 'val_step%d.txt'%train_split
+        else:
+            filename= 'dataset_train.txt'
         f = open(os.path.join(data_path,filename), 'r')
         lines = f.readlines()
         lines[3:] = [x.strip().split(' ') for x in lines[3:]]
@@ -84,7 +87,7 @@ class AachenDayNight(data.Dataset):
         
         
         if overfit is not None:
-            self.points = self.points[overfit]
+            self.points = self.points[:overfit]
         
         pose_stats_filename = os.path.join(self.data_path, 'pose_stats.txt')
         if train and not real:

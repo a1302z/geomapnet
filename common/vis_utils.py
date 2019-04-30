@@ -40,11 +40,11 @@ rgb_colors = [np.array([0.0, 0.0, 255.0]),
 names = ['Background', 'Sky', 'Road', 'Sidewalk', 'Grass', 'Vegetation', 
             'Building', 'Poles', 'Dynamic', 'Unknown']
 
-def sem_label_to_name(label):
+def sem_label_to_name_deeploc(label):
     global names
     return names[label]
 
-def sem_labels_to_rgb(img):
+def sem_labels_to_rgb_deeploc(img):
     """
     Assuming getting input of shape (WxHx10)
     
@@ -70,6 +70,11 @@ def sem_labels_to_rgb(img):
                 index = img[i,j]
             out[i,j] = rgb_colors[index]
     return out
+
+def sem_labels_to_rgb(img):
+    img = img/np.max(img)
+    cm = plt.get_cmap('rainbow')
+    return cm(img)[:,:,0:3]
 
 """
 Transforms tensor of shape (10, x, y) to shape (x, y)

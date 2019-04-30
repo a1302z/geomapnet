@@ -18,8 +18,8 @@ from common.train import load_state_dict, step_feedfwd
 from common.pose_utils import optimize_poses, quaternion_angular_error, qexp,\
     calc_vos_safe_fc, calc_vos_safe
 
-from common.vis_utils import show_images, sem_labels_to_rgb, normalize, one_hot_to_one_channel, sem_label_to_name
-from common.stolen_utils import *
+from common.vis_utils import show_images, sem_labels_to_rgb_deeploc, normalize, one_hot_to_one_channel, sem_labels_to_rgb
+from common.stolen_utils import accuracy, intersectionAndUnion, AverageMeter
 from dataset_loaders.composite import MF
 import argparse
 import os
@@ -55,6 +55,7 @@ parser.add_argument('--result_file', default=None, help='Give file where results
 parser.add_argument('--display_segmentation', type=int, default=0, help='Show n segmentation results')
 parser.add_argument('--show_class_dist', action='store_true', help='Create histogram of pixel classes in semantics')
 parser.add_argument('--print_every', type=int, default=200, help='Plot progress every n steps')
+parser.add_argument('--show_percentages', action='store_true', help='Show percentages of accuracy of points described in \'Benchmarking 6DOF Outdoor Visual Localization in Changing Conditions\' ')
 args = parser.parse_args()
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device
@@ -399,7 +400,31 @@ if not args.model == 'semanticOutput':
     report_string = 'Error in translation: median {:3.2f} m,  mean {:3.2f} m\n' \
         'Error in rotation: median {:3.2f} degrees, mean {:3.2f} degree'.format(med_trans, mean_trans,
                                                                             med_rot, mean_rot)
+    
+    if args.show_percentages:
+        """
+        High precision threshold:   0.5m /  2°
+        Medium precision threshold: 1.0m /  5°
+        Coarse precision threshold: 5.0m / 10°
+        """
+        num_high, num_medium, num_coarse = 0,0,0
+        assert len(t_loss) == len(q_loss), 'Not same number of errors'
+        for i in range(len(t_loss)):
+            t, q = t_loss[i], q_loss[i]
+            #print('Error for point %i:\t t: %.2f \t q: %.2f'%(i,t,q))
+            if t <= 0.5 and q <= 2.0:
+                num_high += 1
+            if t <= 1.0 and q <= 5.0:
+                num_medium += 1
+            if t <= 5.0 and q <= 10.0:
+                num_coarse += 1
+        per_high = float(num_high)/float(len(t_loss))*100.0
+        per_medium = float(num_medium)/float(len(t_loss))*100.0
+        per_coarse = float(num_coarse)/float(len(t_loss))*100.0
+        #print('Num points: %d\tHigh precision: %d\tMedium precision: %d\t Coarse precision: %d'%(len(t_loss), num_high, num_medium, num_coarse))
+        report_string += '\nAccuracy percentages: %2.1f / %2.1f / %2.1f'%(per_high, per_medium, per_coarse)
     print(report_string)
+    
 
     if not args.result_file is None:
         store_string = args.weights.split('/')[-2] + '\n'
@@ -427,8 +452,12 @@ if args.display_segmentation > 0 and len(sem_imgs) > 0:
         if show_only >= 0:
             out = out*(out == show_only)
             targ = targ*(targ == show_only)
-        out = sem_labels_to_rgb(out)
-        targ = sem_labels_to_rgb(targ)
+        if args.dataset == 'DeepLoc':
+            out = sem_labels_to_rgb_deeploc(out)
+            targ = sem_labels_to_rgb_deeploc(targ)
+        else:
+            out = sem_labels_to_rgb(out)
+            targ = sem_labels_to_rgb(targ)
         inp_img = np.moveaxis(i[2].data.numpy()[0,0], 0, -1)
         """
         This is ugly but whatever
@@ -451,6 +480,7 @@ if args.display_segmentation > 0 and len(sem_imgs) > 0:
     output_path = os.path.join(output_dir, output_name)
     save_image(images, output_path)
     final = plt.imread(output_path)
+    plt.figure(figsize==(10,10))
     plt.imshow(final)
     plt.show()
     

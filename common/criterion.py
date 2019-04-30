@@ -172,8 +172,8 @@ class MapNetCriterion(nn.Module):
         else:
             loss_semantic = 0
         
-        #loss = loss_pose + loss_semantic
-        return loss_list  
+        loss = loss_pose + loss_semantic
+        return loss, loss_list  
 
 
 class UncertainyCriterion(nn.Module):

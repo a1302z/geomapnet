@@ -14,10 +14,12 @@ class Optimizer:
     def __init__(self, params, method, base_lr, weight_decay, **kwargs):
         self.method = method
         self.base_lr = base_lr
-
-        if self.method == 'sgd':
+        self.decay = False
+        if 'lr_decay' in kwargs:
+            self.decay
             self.lr_decay = kwargs.pop('lr_decay')
             self.lr_stepvalues = sorted(kwargs.pop('lr_stepvalues'))
+        if self.method == 'sgd':
             self.learner = optim.SGD(params, lr=self.base_lr,
                                      weight_decay=weight_decay, **kwargs)
         elif self.method == 'adam':
@@ -28,7 +30,7 @@ class Optimizer:
                                          weight_decay=weight_decay, **kwargs)
 
     def adjust_lr(self, epoch):
-        if self.method != 'sgd':
+        if not self.decay: #self.method != 'sgd':
             return self.base_lr
 
         decay_factor = 1
