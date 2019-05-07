@@ -360,7 +360,7 @@ class Trainer(object):
                     self.vis.save(envs=[self.vis_env])
                     
             # SAVE CHECKPOINT
-            if epoch % self.config['snapshot'] == 0:
+            if epoch % self.config['snapshot'] == 0 or abs(self.config['n_epochs']-epoch) < 10:
                 self.save_checkpoint(epoch)
                 print('Epoch {:d} checkpoint saved for {:s}'.\
                     format(epoch, self.experiment))

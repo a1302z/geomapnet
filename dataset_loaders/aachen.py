@@ -18,8 +18,12 @@ class camerapoint:
         self.position = position
         self.rotation = rotation
         self.img_path = img_path
+        self.night_img = None
         self.pose = None
         self.sem_path = None
+    
+    def set_night_image(self, night_img):
+        self.night_img = night_img
         
     def set_pose(self, pose):
         self.pose = pose
@@ -35,7 +39,8 @@ class AachenDayNight(data.Dataset):
     
     def __init__(self, data_path, train, train_split=6, overfit=None,
                 seed=7,input_types='img', output_types='pose', real=False
-                ,transform=identity, semantic_transform=identity, scene='', target_transform=identity):
+                ,transform=identity, semantic_transform=identity, scene='', target_transform=identity, 
+                night_augmentation=False):
         """
         seed=7, overfit=None, reduce_data=True,
         transform=identity, 
@@ -47,6 +52,9 @@ class AachenDayNight(data.Dataset):
         self.input_types = input_types if type(input_types) is list else [input_types]
         self.output_types = output_types if type(output_types) is list else [output_types]
         self.train = train
+        self.night_augmentation = night_augmentation
+        if self.night_augmentation:
+            print('Use augmented images')
         self.train_split = train_split
         print_debugging_info = True
         self.transforms = {
@@ -79,6 +87,11 @@ class AachenDayNight(data.Dataset):
             q = np.asarray([float(x) for x in l[1:5]])
             c = np.asarray([float(x) for x in l[5:8]])
             p = camerapoint(img_path = l[0], rotation=q, position=c)
+            if self.night_augmentation:
+                img_name = ntpath.basename(l[0]).replace('.jpg','.png')
+                aug_path = os.path.join(self.data_path, 'AugmentedNightImages', img_name)
+                assert os.path.isfile(aug_path), 'Augmented file not found'
+                p.set_night_image(aug_path)
             self.points.append(p)
             
         if print_debugging_info:
@@ -98,7 +111,7 @@ class AachenDayNight(data.Dataset):
                 pos_list.append(pos)
             pos_list = np.asarray(pos_list)
             mean_t = pos_list.mean(axis=0)
-            print('Mean: %s'%str(mean_t))
+            print('Mean: %s saved to %s'%(str(mean_t), pose_stats_filename))
             std_t = pos_list.std(axis=0)
             np.savetxt(
                 pose_stats_filename, np.vstack(
@@ -135,12 +148,16 @@ class AachenDayNight(data.Dataset):
         test_file.close()
     """
     def __getitem__(self, index):
-        point = self.points[index]
+        point = self.points[index %len(self.points)]
+        augmentation_index = index // len(self.points) if self.night_augmentation else 0
         inps = []
         outs = []
         for inp in self.input_types:
             if inp == 'img':
-                img_path = os.path.join(self.data_path,point.img_path)
+                if augmentation_index == 0:
+                    img_path = os.path.join(self.data_path,point.img_path)
+                else:
+                    img_path = point.night_img
                 img = load_image(img_path)
                 img = None if img is None else self.transforms['img'](img)
                 inps.append(img)
@@ -172,7 +189,8 @@ class AachenDayNight(data.Dataset):
         
     
     def __len__(self):
-        return len(self.points)
+        factor = 2 if self.night_augmentation else 1
+        return len(self.points)*factor
     
     
     def print_point(self, index):
@@ -189,7 +207,7 @@ def main():
     loader[100]
     loader[0]
     print(len(loader))
-    loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', True)
+    loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', True, night_augmentation=True)
     x = loader[100]
     print(type(x))
     for i in x:

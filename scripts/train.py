@@ -54,6 +54,7 @@ parser.add_argument('--learn_direct_sigma', action='store_true', help='Learn sig
 parser.add_argument('--init_seed', type=int, default=0, help='Set seed for random initialization of model')
 parser.add_argument('--server', type=str, default='http://localhost', help='Set visdom server address')
 parser.add_argument('--crop_size_file', type=str, default='crop_size.txt', help='Specify crop size file')
+parser.add_argument('--use_augmentation', action='store_true', help='Use augmented images. Needs to be supported by dataloader (currently only AachenDayNight)')
 
 args = parser.parse_args()
 
@@ -274,6 +275,7 @@ if args.model == 'posenet':
                       output_types=output_types,
                       train_split=train_split,
                       #concatenate_inputs=True
+                      night_augmentation=args.use_augmentation,
                      )
         from dataset_loaders.aachen import AachenDayNight
         train_set = AachenDayNight(train=True, **kwargs)
@@ -323,6 +325,8 @@ elif 'mapnet' in args.model or 'semantic' in args.model or 'multitask' in args.m
                       train_split=train_split,
                       #concatenate_inputs=True
                      )
+        if args.dataset == 'AachenDayNight':
+            kwargs['night_augmentation']=args.use_augmentation
         
     if '++' in args.model:
         train_set = MFOnline(

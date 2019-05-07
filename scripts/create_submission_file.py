@@ -8,6 +8,7 @@ from torchvision.utils import make_grid, save_image
 from torch.utils.data import DataLoader
 import torch.cuda
 import configparser
+import transforms3d.quaternions as txq
 import set_paths
 from models.posenet import *
 from common.train import load_state_dict, step_feedfwd
@@ -25,6 +26,7 @@ parser.add_argument('--dir', type=str, required=True,help='Give directory where 
 parser.add_argument('--model', choices=('posenet', 'mapnet', 'multitask'), help='Model to use')
 parser.add_argument('--weights', type=str, help='trained weights to load', required=True)
 parser.add_argument('--device', type=str, default='0', help='GPU device(s)')
+parser.add_argument('--output_file', type=str, default='Aachen_eval_Multitask.txt', help='File to store output')
 args = parser.parse_args()
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device
@@ -50,7 +52,7 @@ if (args.model.find('mapnet') >= 0) or (args.model.find('multitask') >= 0):
         srx = section.getfloat('s_rel_trans', 20)
         srq = section.getfloat('s_rel_rot', 20)"""
 
-data_dir = osp.join('..', 'data', 'AachenDayNight')
+data_dir = osp.join('..', 'data', 'deepslam_data', 'AachenDayNight')
 stats_filename = osp.join(data_dir, '', 'stats.txt')
 stats = np.loadtxt(stats_filename)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
@@ -134,7 +136,7 @@ float_semantic_transform = transforms.Compose([
 # read mean and stdev for un-normalizing predictions
 pose_stats_file = osp.join(data_dir, 'pose_stats.txt')
 pose_m, pose_s = np.loadtxt(pose_stats_file)  # mean and stdev
-print('pose mean: %s\npose std: %s'%(str(pose_m), str(pose_s)))
+print('Load stats from %s\npose mean: %s\npose std: %s'%(data_dir,str(pose_m), str(pose_s)))
 
 files = []
 for dirpath, dirnames, filenames in os.walk(args.dir):
@@ -171,15 +173,19 @@ for i, file in enumerate(files):
     
     
         
-output_file = open('logs/Aachen_eval_multitask.txt', 'w')
+output_file = open('logs/'+args.output_file, 'w')
 for i, file in enumerate(files):
     filename = file[0]
     pose = pred_poses[i]
+    q = pose[3:]
+    p = pose[:3]
+    t = -txq.rotate_vector(p, q)
     file_string = filename
-    for f in pose[3:]:
+    for f in q:
         file_string += ' '+str(f)
-    for f in pose[:3]:
+    for f in t:
         file_string += ' '+str(f)
     output_file.write(file_string+'\n')
+output_file.close()
         
 

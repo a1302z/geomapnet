@@ -55,8 +55,40 @@ parser.add_argument('--result_file', default=None, help='Give file where results
 parser.add_argument('--display_segmentation', type=int, default=0, help='Show n segmentation results')
 parser.add_argument('--show_class_dist', action='store_true', help='Create histogram of pixel classes in semantics')
 parser.add_argument('--print_every', type=int, default=200, help='Plot progress every n steps')
-parser.add_argument('--show_percentages', action='store_true', help='Show percentages of accuracy of points described in \'Benchmarking 6DOF Outdoor Visual Localization in Changing Conditions\' ')
+#parser.add_argument('--show_percentages', action='store_true', help='Show percentages of accuracy of points described in \'Benchmarking 6DOF Outdoor Visual Localization in Changing Conditions\' ')
+parser.add_argument('--use_augmentation', action='store_true', help='Use augmented images. Needs to be supported by dataloader (currently only AachenDayNight)')
 args = parser.parse_args()
+
+def calc_errors(t_loss, q_loss):
+    med_trans, mean_trans = np.median(t_loss), np.mean(t_loss)
+    med_rot, mean_rot = np.median(q_loss), np.mean(q_loss)
+    return 'Error in translation: median {:3.2f} m,  mean {:3.2f} m\n' \
+        'Error in rotation: median {:3.2f} degrees, mean {:3.2f} degree'.format(med_trans, mean_trans,
+                                                                            med_rot, mean_rot)
+
+def calc_percentages(t_loss, q_loss):
+    """
+    High precision threshold:   0.5m /  2°
+    Medium precision threshold: 1.0m /  5°
+    Coarse precision threshold: 5.0m / 10°
+    """
+    num_high, num_medium, num_coarse = 0,0,0
+    assert len(t_loss) == len(q_loss), 'Not same number of errors'
+    for i in range(len(t_loss)):
+        t, q = t_loss[i], q_loss[i]
+        #print('Error for point %i:\t t: %.2f \t q: %.2f'%(i,t,q))
+        if t <= 0.5 and q <= 2.0:
+            num_high += 1
+        if t <= 1.0 and q <= 5.0:
+            num_medium += 1
+        if t <= 5.0 and q <= 10.0:
+            num_coarse += 1
+    per_high = float(num_high)/float(len(t_loss))*100.0
+    per_medium = float(num_medium)/float(len(t_loss))*100.0
+    per_coarse = float(num_coarse)/float(len(t_loss))*100.0
+    #print('Num points: %d\tHigh precision: %d\tMedium precision: %d\t Coarse precision: %d'%(len(t_loss), num_high, num_medium, num_coarse))
+    return '\nAccuracy percentages: %2.1f / %2.1f / %2.1f'%(per_high, per_medium, per_coarse)
+
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device
 
@@ -226,6 +258,8 @@ elif args.dataset in ['AachenDayNight', 'CambridgeLandmarks']:
                       train_split=train_split,
                       #concatenate_inputs=True
                  )
+    if args.dataset == 'AachenDayNight':
+        kwargs['night_augmentation'] = args.use_augmentation
 
 if (args.model.find('mapnet') >= 0) or args.pose_graph or (args.model.find('semantic') >= 0) or (args.model.find('multitask') >= 0):
     if args.pose_graph:
@@ -395,34 +429,23 @@ if not args.model == 'semanticOutput':
     #q_loss = eval_func(q_loss)
     #print '{:s} error in translation = {:3.2f} m\n' \
     #      '{:s} error in rotation    = {:3.2f} degrees'.format(eval_str, t_loss,
-    med_trans, mean_trans = np.median(t_loss), np.mean(t_loss)
-    med_rot, mean_rot = np.median(q_loss), np.mean(q_loss)
-    report_string = 'Error in translation: median {:3.2f} m,  mean {:3.2f} m\n' \
-        'Error in rotation: median {:3.2f} degrees, mean {:3.2f} degree'.format(med_trans, mean_trans,
-                                                                            med_rot, mean_rot)
     
-    if args.show_percentages:
-        """
-        High precision threshold:   0.5m /  2°
-        Medium precision threshold: 1.0m /  5°
-        Coarse precision threshold: 5.0m / 10°
-        """
-        num_high, num_medium, num_coarse = 0,0,0
-        assert len(t_loss) == len(q_loss), 'Not same number of errors'
-        for i in range(len(t_loss)):
-            t, q = t_loss[i], q_loss[i]
-            #print('Error for point %i:\t t: %.2f \t q: %.2f'%(i,t,q))
-            if t <= 0.5 and q <= 2.0:
-                num_high += 1
-            if t <= 1.0 and q <= 5.0:
-                num_medium += 1
-            if t <= 5.0 and q <= 10.0:
-                num_coarse += 1
-        per_high = float(num_high)/float(len(t_loss))*100.0
-        per_medium = float(num_medium)/float(len(t_loss))*100.0
-        per_coarse = float(num_coarse)/float(len(t_loss))*100.0
-        #print('Num points: %d\tHigh precision: %d\tMedium precision: %d\t Coarse precision: %d'%(len(t_loss), num_high, num_medium, num_coarse))
-        report_string += '\nAccuracy percentages: %2.1f / %2.1f / %2.1f'%(per_high, per_medium, per_coarse)
+    report_string = 'Total error\n' if args.use_augmentation else ''
+    report_string += calc_errors(t_loss, q_loss)
+    
+    report_string += calc_percentages(t_loss, q_loss)
+    if args.use_augmentation:
+        #print('Len(t_loss): %d\t Border index: %d'%(len(t_loss), len(t_loss)//2))
+        #print('Len(q_loss): %d\t Border index: %d'%(len(q_loss), len(q_loss)//2))
+        day_t, day_q = t_loss[:len(t_loss)//2], q_loss[:len(q_loss)//2]
+        night_t, night_q = t_loss[len(t_loss)//2:], q_loss[len(q_loss)//2:]
+        report_string += '\nDay results\n'
+        report_string += calc_errors(day_t, day_q)
+        report_string += calc_percentages(day_t, day_q)
+        report_string += '\nNight results\n'
+        report_string += calc_errors(night_t, night_q)
+        report_string += calc_percentages(night_t, night_q)
+        
     print(report_string)
     
 
