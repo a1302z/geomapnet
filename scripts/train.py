@@ -55,6 +55,7 @@ parser.add_argument('--init_seed', type=int, default=0, help='Set seed for rando
 parser.add_argument('--server', type=str, default='http://localhost', help='Set visdom server address')
 parser.add_argument('--crop_size_file', type=str, default='crop_size.txt', help='Specify crop size file')
 parser.add_argument('--use_augmentation', action='store_true', help='Use augmented images. Needs to be supported by dataloader (currently only AachenDayNight)')
+parser.add_argument('--only_augmentation', action='store_true', help='Use only augmented images. Not in combination with use augmentation option!')
 
 args = parser.parse_args()
 
@@ -62,10 +63,11 @@ settings = configparser.ConfigParser()
 with open(args.config_file, 'r') as f:
     settings.read_file(f)
 section = settings['optimization']
-optim_config = {k: json.loads(v) for k, v in list(section.items()) if k != 'opt'}
+optim_config = {k: json.loads(v) for k, v in list(section.items()) if k not in ['opt', 'loss_fn']}
 opt_method = section['opt']
 lr = optim_config.pop('lr')
 weight_decay = optim_config.pop('weight_decay')
+loss_fn_config = section.get('loss_fn', 'l1').lower()
 
 
 data_dir = osp.join('..', 'data', args.dataset)
@@ -75,6 +77,10 @@ crop_size_file = osp.join(data_dir, args.crop_size_file)
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 
 section = settings['hyperparameters']
+freeze = section.getboolean('freeze_feature_extraction', False)
+activation_function = section.get('activation_function', 'relu').lower()
+feature_dim = section.getint('feature_dim', 2048)
+base_poses = section.get('base_poses', 'None')
 dropout = section.getfloat('dropout')
 color_jitter = section.getfloat('color_jitter', 0)
 sax = section.getfloat('beta_translation', 0.0)
@@ -104,10 +110,29 @@ if det_seed >= 0:
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-# model
+#  --------- Model ----------
+# activation function
+af = torch.nn.functional.relu
+if activation_function == 'sigmoid':
+    af = torch.nn.functional.sigmoid
+#base poses
+set_base_poses = None
+if base_poses in ['unit_vectors', 'unit']:
+    feature_dim = 6
+    set_base_poses = np.array([[1,0,0], [0,1,0],[0,0,1],[-1,0,0],[0,-1,0],[0,0,-1]], dtype=np.float)
+    set_base_poses = torch.from_numpy(set_base_poses.T).float()
+    print('Base poses set to unit vectors')
+elif base_poses == 'gaussian':
+    set_base_poses = np.random.normal(size=(3, feature_dim))
+    set_base_poses = torch.from_numpy(set_base_poses).float()
+    print('Base poses sampled from gaussian')
+else:
+    print('Standard initialization for base poses')
 feature_extractor = models.resnet34(pretrained=True)
 posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=True,
-                  filter_nans=(args.model == 'mapnet++'))
+                  filter_nans=(args.model == 'mapnet++'), feat_dim=feature_dim, 
+                 freeze_feature_extraction = freeze, activation_function=af, 
+                 set_base_poses=set_base_poses)
 if args.model in ['multitask', 'semanticOutput']:
     classes = None
     input_size = None
@@ -139,23 +164,30 @@ elif args.model == 'semanticV4':
                   filter_nans=(args.model == 'mapnet++'))
     model = MapNet(mapnet=posenetv2)
 elif args.model == 'multitask':
-    
-    model = MultiTask(posenet=posenet, classes=classes, input_size=input_size)
+    model = MultiTask(posenet=posenet, classes=classes, input_size=input_size,feat_dim=feature_dim, 
+                     freeze_feature_extraction=freeze, set_base_poses=set_base_poses)
 elif args.model == 'semanticOutput':
-    model = SemanticOutput(posenet=posenet, classes=classes, input_size=input_size)
+    model = SemanticOutput(posenet=posenet, classes=classes, input_size=input_size,feat_dim=feature_dim)
 else:
     raise NotImplementedError
 
 # loss function
+loss_fn = nn.L1Loss() #default regression loss
+if loss_fn_config in ['l2', 'mse']:
+    loss_fn = nn.MSELoss()
+    print('Using MSE Loss')
+elif loss_fn_config in ['smoothl1', 'huber']:
+    loss_fn = nn.SmoothL1Loss()
+    print('Using Smooth L1 / Huber Loss')
 if args.model == 'posenet':
-    train_criterion = PoseNetCriterion(
+    train_criterion = PoseNetCriterion(t_loss_fn=loss_fn, q_loss_fn=loss_fn,
         sax=sax, saq=saq, learn_beta=args.learn_beta)
     val_criterion = PoseNetCriterion()
 elif args.model == 'semanticOutput':
     train_criterion = SemanticCriterion()
     val_criterion = SemanticCriterion()
 elif 'mapnet' in args.model or 'semantic' in args.model or 'multitask' in args.model:
-    kwargs = dict(sax=sax, saq=saq, srx=srx, srq=srq,
+    kwargs = dict(t_loss_fn=loss_fn, q_loss_fn=loss_fn,sax=sax, saq=saq, srx=srx, srq=srq,
                   learn_beta=args.learn_beta, learn_gamma=args.learn_gamma)
     
     if 'multitask' in args.model:
@@ -220,6 +252,7 @@ float_semantic_transform = transforms.Compose([
 data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
 kwargs = dict(scene=args.scene, data_path=data_dir, transform=data_transform,
               target_transform=target_transform, seed=seed)
+assert not (args.only_augmentation and args.use_augmentation), 'Not both options possible'
 #default
 input_types = ['img']
 output_types = ['pose']
@@ -276,6 +309,7 @@ if args.model == 'posenet':
                       train_split=train_split,
                       #concatenate_inputs=True
                       night_augmentation=args.use_augmentation,
+                      only_augmentation=args.only_augmentation,
                      )
         from dataset_loaders.aachen import AachenDayNight
         train_set = AachenDayNight(train=True, **kwargs)
@@ -327,6 +361,7 @@ elif 'mapnet' in args.model or 'semantic' in args.model or 'multitask' in args.m
                      )
         if args.dataset == 'AachenDayNight':
             kwargs['night_augmentation']=args.use_augmentation
+            kwargs['only_augmentation']=args.only_augmentation
         
     if '++' in args.model:
         train_set = MFOnline(

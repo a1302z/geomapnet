@@ -66,23 +66,32 @@ def calc_errors(t_loss, q_loss):
         'Error in rotation: median {:3.2f} degrees, mean {:3.2f} degree'.format(med_trans, mean_trans,
                                                                             med_rot, mean_rot)
 
-def calc_percentages(t_loss, q_loss):
+def calc_percentages(t_loss, q_loss, write_to_file=False):
     """
     High precision threshold:   0.5m /  2°
     Medium precision threshold: 1.0m /  5°
     Coarse precision threshold: 5.0m / 10°
     """
     num_high, num_medium, num_coarse = 0,0,0
+    if write_to_file:
+        file = open('logs/high_precision_indices.txt', 'w')
     assert len(t_loss) == len(q_loss), 'Not same number of errors'
+    high_ind, med_ind, coarse_ind = 'high precision indices:\n', 'medium precision_indices:\n', 'coarse precision_indices:\n'
     for i in range(len(t_loss)):
         t, q = t_loss[i], q_loss[i]
         #print('Error for point %i:\t t: %.2f \t q: %.2f'%(i,t,q))
         if t <= 0.5 and q <= 2.0:
             num_high += 1
+            high_ind += str(i)+'\n'
         if t <= 1.0 and q <= 5.0:
             num_medium += 1
+            med_ind += str(i)+'\n'
         if t <= 5.0 and q <= 10.0:
             num_coarse += 1
+            coarse_ind += str(i)+'\n'
+    if write_to_file:
+        file.write(high_ind+'\n'+med_ind+'\n'+coarse_ind)
+        file.close()
     per_high = float(num_high)/float(len(t_loss))*100.0
     per_medium = float(num_medium)/float(len(t_loss))*100.0
     per_coarse = float(num_coarse)/float(len(t_loss))*100.0
@@ -98,6 +107,9 @@ with open(config_file, 'r') as f:
     settings.read_file(f)
 seed = settings.getint('training', 'seed')
 section = settings['hyperparameters']
+activation_function = section.get('activation_function', 'relu').lower()
+feature_dim = section.getint('feature_dim', 2048)
+base_poses = section.get('base_poses', 'None')
 dropout = section.getfloat('dropout')
 train_split = section.getint('train_split', 6)
 if (args.model.find('mapnet') >= 0) or args.pose_graph or (args.model.find('semantic') >= 0) or (args.model.find('multitask') >= 0):
@@ -121,8 +133,27 @@ crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 resize = int(max(crop_size))
 
 # model
+af = torch.nn.functional.relu
+if activation_function == 'sigmoid':
+    af = torch.nn.functional.sigmoid
+    print('Using sigmoid as activation function')
+    
+set_base_poses = None
+if base_poses in ['unit_vectors', 'unit']:
+    feature_dim = 6
+    set_base_poses = np.array([[1,0,0], [0,1,0],[0,0,1],[-1,0,0],[0,-1,0],[0,0,-1]], dtype=np.float)
+    set_base_poses = torch.from_numpy(set_base_poses.T).float()
+    print('Base poses set to unit vectors')
+elif base_poses == 'gaussian':
+    set_base_poses = np.random.normal(size=(3, feature_dim))
+    set_base_poses = torch.from_numpy(set_base_poses).float()
+    print('Base poses sampled from gaussian')
+else:
+    print('Standard initialization for base poses')
 feature_extractor = models.resnet34(pretrained=False)
-posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=False)
+posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=False,
+                  feat_dim=feature_dim, activation_function=af, 
+                 set_base_poses=set_base_poses)
 if args.model in ['multitask', 'semanticOutput']:
     classes = None
     input_size = None
@@ -150,9 +181,10 @@ elif args.model == 'semanticV4':
                   filter_nans=(args.model == 'mapnet++'))
     model = MapNet(mapnet=posenetv2)
 elif args.model == 'multitask':
-    model = MultiTask(posenet=posenet, classes=classes, input_size=input_size)
+    model = MultiTask(posenet=posenet, classes=classes, input_size=input_size, feat_dim=feature_dim, 
+                 set_base_poses=set_base_poses)
 elif args.model == 'semanticOutput':
-    model = SemanticOutput(posenet=posenet, classes=classes, input_size=input_size)
+    model = SemanticOutput(posenet=posenet, classes=classes, input_size=input_size, feat_dim=feature_dim)
 else:
     model = posenet
 model.eval()

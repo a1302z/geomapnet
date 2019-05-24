@@ -40,7 +40,7 @@ class AachenDayNight(data.Dataset):
     def __init__(self, data_path, train, train_split=6, overfit=None,
                 seed=7,input_types='img', output_types='pose', real=False
                 ,transform=identity, semantic_transform=identity, scene='', target_transform=identity, 
-                night_augmentation=False):
+                night_augmentation=False, only_augmentation=False, augmentation_version='_v2'):
         """
         seed=7, overfit=None, reduce_data=True,
         transform=identity, 
@@ -53,8 +53,12 @@ class AachenDayNight(data.Dataset):
         self.output_types = output_types if type(output_types) is list else [output_types]
         self.train = train
         self.night_augmentation = night_augmentation
+        self.only_augmentation = only_augmentation
+        assert not (night_augmentation and only_augmentation), 'Not both augmentation options possible'
         if self.night_augmentation:
-            print('Use augmented images')
+            print('Use augmented images too')
+        elif self.only_augmentation:
+            print('Use only augmented images')
         self.train_split = train_split
         print_debugging_info = True
         self.transforms = {
@@ -87,15 +91,15 @@ class AachenDayNight(data.Dataset):
             q = np.asarray([float(x) for x in l[1:5]])
             c = np.asarray([float(x) for x in l[5:8]])
             p = camerapoint(img_path = l[0], rotation=q, position=c)
-            if self.night_augmentation:
+            if self.night_augmentation or self.only_augmentation:
                 img_name = ntpath.basename(l[0]).replace('.jpg','.png')
-                aug_path = os.path.join(self.data_path, 'AugmentedNightImages', img_name)
+                aug_path = os.path.join(self.data_path, 'AugmentedNightImages_v2', img_name)
                 assert os.path.isfile(aug_path), 'Augmented file not found'
                 p.set_night_image(aug_path)
             self.points.append(p)
             
         if print_debugging_info:
-            print('Totals to %d points'%len(self.points))
+            print('Totals to %d points'%self.__len__())
             
         
         
@@ -149,7 +153,11 @@ class AachenDayNight(data.Dataset):
     """
     def __getitem__(self, index):
         point = self.points[index %len(self.points)]
-        augmentation_index = index // len(self.points) if self.night_augmentation else 0
+        augmentation_index = 0
+        if self.night_augmentation:
+            augmentation_index = index // len(self.points)
+        elif self.only_augmentation:
+            augmentation_index = 1
         inps = []
         outs = []
         for inp in self.input_types:
@@ -203,7 +211,7 @@ def main():
     x = loader[20]
     for i in x:
         print(type(i))
-    loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', True)
+    loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', True, only_augmentation=True)
     loader[100]
     loader[0]
     print(len(loader))

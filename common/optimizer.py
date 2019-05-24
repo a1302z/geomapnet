@@ -16,7 +16,7 @@ class Optimizer:
         self.base_lr = base_lr
         self.decay = False
         if 'lr_decay' in kwargs:
-            self.decay
+            self.decay = True
             self.lr_decay = kwargs.pop('lr_decay')
             self.lr_stepvalues = sorted(kwargs.pop('lr_stepvalues'))
         if self.method == 'sgd':

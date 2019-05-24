@@ -26,7 +26,7 @@ parser.add_argument('--dir', type=str, required=True,help='Give directory where 
 parser.add_argument('--model', choices=('posenet', 'mapnet', 'multitask'), help='Model to use')
 parser.add_argument('--weights', type=str, help='trained weights to load', required=True)
 parser.add_argument('--device', type=str, default='0', help='GPU device(s)')
-parser.add_argument('--output_file', type=str, default='Aachen_eval_Multitask.txt', help='File to store output')
+parser.add_argument('--output_file', type=str, default='Aachen_eval_Multitask_augmented.txt', help='File to store output')
 args = parser.parse_args()
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device
@@ -37,6 +37,8 @@ with open(config_file, 'r') as f:
     settings.read_file(f)
 seed = settings.getint('training', 'seed')
 section = settings['hyperparameters']
+activation_function = section.get('activation_function', 'relu').lower()
+feature_dim = section.getint('feature_dim', 2048)
 dropout = section.getfloat('dropout')
 train_split = section.getint('train_split', 6)
 if (args.model.find('mapnet') >= 0) or (args.model.find('multitask') >= 0):
@@ -62,8 +64,13 @@ resize = int(max(crop_size))
 
 
 # model
+af = torch.nn.functional.relu
+if activation_function == 'sigmoid':
+    af = torch.nn.functional.sigmoid
+    print('Using sigmoid as activation function')
 feature_extractor = models.resnet34(pretrained=False)
-posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=False)
+posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=False,
+                  feat_dim=feature_dim, activation_function=af)
 if args.model in ['multitask', 'semanticOutput']:
     """classes = None
     input_size = None
@@ -91,7 +98,7 @@ if (args.model.find('mapnet') >= 0):# or args.pose_graph  or args.model == 'sema
                       filter_nans=(args.model == 'mapnet++'))
         model = MapNet(mapnet=posenetv2)"""
 elif args.model == 'multitask':
-    model = MultiTask(posenet=posenet, classes=classes, input_size=input_size)
+    model = MultiTask(posenet=posenet, classes=classes, input_size=input_size, feat_dim=feature_dim)
 #elif args.model == 'semanticOutput':
 #    model = SemanticOutput(posenet=posenet, classes=classes, input_size=input_size)
 else:

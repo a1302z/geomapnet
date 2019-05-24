@@ -37,7 +37,8 @@ def filter_hook(m, g_in, g_out):
 
 class PoseNet(nn.Module):
     def __init__(self, feature_extractor, droprate=0.5, pretrained=True,
-                 feat_dim=2048, filter_nans=False):
+                 feat_dim=2048, filter_nans=False, freeze_feature_extraction=False,
+                 activation_function=F.relu, set_base_poses=None):
         super(PoseNet, self).__init__()
         self.droprate = droprate
 
@@ -60,16 +61,28 @@ class PoseNet(nn.Module):
                 self.fc_wpqr]
         else:
             init_modules = self.modules()
+        if freeze_feature_extraction:
+            for m in self.feature_extractor.modules():
+                if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                    print('Freeze grad for %s'%str(m))
+                    m.weight.requires_grad = False
 
         for m in init_modules:
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                #print('Unfreeze grad for %s'%str(m))
+                m.weight.requires_grad = True
                 nn.init.kaiming_normal_(m.weight.data)
                 if m.bias is not None:
                     nn.init.constant_(m.bias.data, 0)
+                if freeze_feature_extraction:
+                    m.weight.requires_grad = False
+        if set_base_poses is not None:
+            self.fc_xyz.weight.data = set_base_poses
+            self.fc_xyz.weight.requires_grad = False
 
     def forward(self, x):
         x = self.feature_extractor(x)
-        x = F.relu(x)
+        x = activation_function(x)
         if self.droprate > 0:
             x = F.dropout(x, p=self.droprate, training=self.training)
 
@@ -113,6 +126,7 @@ class PoseNetV2(nn.Module):
         self.feature_extractor.avgpool = nn.AdaptiveAvgPool2d(1)
         fe_out_planes = self.feature_extractor.fc.in_features
         self.feature_extractor.fc = nn.Linear(fe_out_planes, feat_dim)
+        self.activation_function = activation_function
         
         self.fc_xyz = nn.Linear(feat_dim, 3)
         self.fc_wpqr = nn.Linear(feat_dim, 3)
@@ -382,7 +396,7 @@ class MultiTask(nn.Module):
     The padding of the upconvolutions is fixed to a certain input and output size of the Images.
     """
     def __init__(self, posenet, classes=3, droprate=0.5, pretrained=True,
-      feat_dim=2048, filter_nans=False, input_size=(224,224)):
+      feat_dim=2048, filter_nans=False, input_size=(224,224), set_base_poses=None, freeze_feature_extraction=False):
         super(MultiTask, self).__init__()
         self.posenet = posenet
         """
@@ -411,6 +425,7 @@ class MultiTask(nn.Module):
             self.fc_wpqr.register_backward_hook(hook=filter_hook)
 
         # initialize
+        """
         if pretrained:
             init_modules = [self.feature_extractor.fc, self.fc_xyz, self.fc_wpqr]
         else:
@@ -421,8 +436,22 @@ class MultiTask(nn.Module):
                 nn.init.kaiming_normal_(m.weight.data)
                 if m.bias is not None:
                     nn.init.constant_(m.bias.data, 0)
+        """
+                    
         
-    def forward(self, x):
+        if freeze_feature_extraction:
+            for m in self.feature_extractor.modules():
+                if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                    print('Freeze grad for %s'%str(m))
+                    m.weight.requires_grad = False
+                    
+        if set_base_poses is not None:
+            self.fc_xyz.weight.data = set_base_poses
+            self.fc_xyz.weight.requires_grad = False
+            #print('Set base poses to %s'%str(set_base_poses))
+        
+                    
+    def __feature_vector__(self, x):
         s = x.size()
         x = x.view(-1, 3, self.input_size[0], self.input_size[1])
         x0 = x
@@ -473,10 +502,147 @@ class MultiTask(nn.Module):
         poses = F.relu(poses)
         if self.droprate > 0:
             poses = F.dropout(poses, p=self.droprate, training=self.training)
-
+        return poses, semantic
+        
+        
+    def forward(self, x):
+        s = x.size()
+        poses, semantic = self.__feature_vector__(x)
         xyz  = self.fc_xyz(poses)
         wpqr = self.fc_wpqr(poses)
         poses = torch.cat((xyz, wpqr), 1)
         poses = poses.view(s[0], s[1], -1) #Shape(10, 3, 6)
         
         return (poses, semantic)
+    
+    
+    
+
+class MultiTask3D(nn.Module):
+    """
+    Multi-task model to learn poses and semantic segmentation
+
+    The padding of the upconvolutions is fixed to a certain input and output size of the Images.
+    """
+    def __init__(self, posenet, classes=3, droprate=0.5, pretrained=True,
+      feat_dim=2048, filter_nans=False, input_size=(224,224), set_base_poses=None, freeze_feature_extraction=False):
+        super(MultiTask3D, self).__init__()
+        self.posenet = posenet
+        """
+        TODO Experiment with model architecture
+        Inspired by U-Net
+        """
+        self.input_size = input_size
+        self.semantic_layer0 = nn.ConvTranspose2d(64, classes, kernel_size=(6,5), stride=4, padding=1, bias=False)
+        self.semantic_layer1 = nn.ConvTranspose2d(64, 64, kernel_size=7, stride=1, padding=3, bias=False)
+        self.semantic_layer2 = nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1)
+        self.semantic_layer3 = nn.ConvTranspose2d(256, 128, stride=2, kernel_size=(4,3), padding=1)
+        self.semantic_layer4 = nn.ConvTranspose2d(512, 256, stride=2, kernel_size=(4,3), padding=1)
+        
+        
+        self.droprate = droprate
+
+        # replace the last FC layer in feature extractor
+        self.feature_extractor = self.posenet.feature_extractor
+        self.feature_extractor.avgpool = nn.AdaptiveAvgPool2d(1)
+        fe_out_planes = self.feature_extractor.fc.in_features
+        self.feature_extractor.fc = nn.Linear(fe_out_planes, feat_dim)
+
+        self.fc_xyz  = nn.Linear(feat_dim, 3)
+        self.fc_wpqr = nn.Linear(feat_dim, 3)
+        if filter_nans:
+            self.fc_wpqr.register_backward_hook(hook=filter_hook)
+
+        # initialize
+        """
+        if pretrained:
+            init_modules = [self.feature_extractor.fc, self.fc_xyz, self.fc_wpqr]
+        else:
+            init_modules = self.modules()
+
+        for m in init_modules:
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight.data)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias.data, 0)
+        """
+                    
+        
+        if freeze_feature_extraction:
+            for m in self.feature_extractor.modules():
+                if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                    print('Freeze grad for %s'%str(m))
+                    m.weight.requires_grad = False
+                    
+        if set_base_poses is not None:
+            self.fc_xyz.weight.data = set_base_poses
+            self.fc_xyz.weight.requires_grad = False
+            #print('Set base poses to %s'%str(set_base_poses))
+        
+                    
+    def __feature_vector__(self, x):
+        s = x.size()
+        x = x.view(-1, 3, self.input_size[0], self.input_size[1])
+        x0 = x
+
+        s1 = x.size()
+        #print(s1)
+        x = self.posenet.feature_extractor.conv1(x)
+        x = self.posenet.feature_extractor.bn1(x)
+        x = self.posenet.feature_extractor.relu(x)
+        x = self.posenet.feature_extractor.maxpool(x)
+        x1 = x
+        s2 = x.size()
+        #print(s2)
+        x = self.posenet.feature_extractor.layer1(x)
+        x2 = x
+        s3 = x.size()
+        #print(s3)
+        x = self.posenet.feature_extractor.layer2(x)
+        x3 = x
+        s4 = x.size()
+        #print(s4)
+        x = self.posenet.feature_extractor.layer3(x)
+        x4 = x
+        s5 = x.size()
+        #print(s5)
+        x = self.posenet.feature_extractor.layer4(x)
+        
+        semantic = self.semantic_layer4(x)
+        semantic = nn.functional.interpolate(semantic, size=s5[2:4])
+        semantic = self.semantic_layer3(semantic + x4)
+        semantic = nn.functional.interpolate(semantic, size=s4[2:4])
+        #print(semantic.size())
+        semantic = self.semantic_layer2(semantic + x3)
+        semantic = nn.functional.interpolate(semantic, size=s3[2:4])
+        #print(semantic.size())
+        semantic = self.semantic_layer1(semantic + x2)
+        semantic = nn.functional.interpolate(semantic, size=s2[2:4])
+        #print(semantic.size())
+        semantic = self.semantic_layer0(semantic + x1)
+        semantic = nn.functional.interpolate(semantic, size=s1[2:4])
+        semantic.view(s[0],s[1],-1)
+        #print(semantic.size())
+        #print('Forward pass completed')
+        
+        poses = self.posenet.feature_extractor.avgpool(x)
+        poses = poses.view(poses.size(0), -1)
+        poses = self.posenet.feature_extractor.fc(poses)
+        poses = F.relu(poses)
+        if self.droprate > 0:
+            poses = F.dropout(poses, p=self.droprate, training=self.training)
+        return poses, semantic
+        
+        
+    def forward(self, x):
+        s = x.size()
+        poses, semantic = self.__feature_vector__(x)
+        xyz  = self.fc_xyz(poses)
+        wpqr = self.fc_wpqr(poses)
+        poses = torch.cat((xyz, wpqr), 1)
+        poses = poses.view(s[0], s[1], -1) #Shape(10, 3, 6)
+        
+        return (poses, semantic)
+    
+    
+    

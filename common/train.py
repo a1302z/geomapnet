@@ -203,6 +203,9 @@ class Trainer(object):
             if osp.isfile(checkpoint_file):
                 loc_func = None if self.config['cuda'] else lambda storage, loc: storage
                 checkpoint = torch.load(checkpoint_file, map_location=loc_func)
+                if checkpoint['epoch'] is None:
+                    print('WARNING: SAVED EPOCH NOT SPECIFIED IN SAVED FILE - ASSUMING 150')
+                    checkpoint['epoch'] = 150
                 load_state_dict(self.model, checkpoint['model_state_dict'])
                 if resume_optim:
                     self.optimizer.learner.load_state_dict(
@@ -220,8 +223,7 @@ class Trainer(object):
                                        if not k in c_state}
                         c_state.update(append_dict)
                         self.train_criterion.load_state_dict(c_state)
-                print('Loaded checkpoint {:s} epoch {:d}'.format(checkpoint_file,
-                                                                 checkpoint['epoch']))
+                print('Loaded checkpoint {:s} epoch {:d}'.format(str(checkpoint_file),                                                               checkpoint['epoch']))
 
         self.train_loader = torch.utils.data.DataLoader(train_dataset,
                                                         batch_size=self.config['batch_size'], shuffle=self.config['shuffle'],
@@ -242,8 +244,8 @@ class Trainer(object):
             if self.extra_criterion:
                 self.extra_criterion.cuda()
 
-    def save_checkpoint(self, epoch):
-        if epoch is None:
+    def save_checkpoint(self, epoch, final_epoch):
+        if epoch >= final_epoch:
             filename = osp.join(self.logdir, 'final_model.pth.tar'.format(epoch))
         else:
             filename = osp.join(self.logdir, 'epoch_{:03d}.pth.tar'.format(epoch))
@@ -360,8 +362,8 @@ class Trainer(object):
                     self.vis.save(envs=[self.vis_env])
                     
             # SAVE CHECKPOINT
-            if epoch % self.config['snapshot'] == 0 or abs(self.config['n_epochs']-epoch) < 10:
-                self.save_checkpoint(epoch)
+            if epoch % self.config['snapshot'] == 0 or abs(self.config['n_epochs']-epoch) < 5:
+                self.save_checkpoint(epoch, final_epoch=self.config['n_epochs'])
                 print('Epoch {:d} checkpoint saved for {:s}'.\
                     format(epoch, self.experiment))
 
@@ -465,7 +467,7 @@ class Trainer(object):
 
         # Save final checkpoint
         epoch = self.config['n_epochs']
-        self.save_checkpoint(epoch=None)
+        self.save_checkpoint(epoch=epoch, final_epoch=epoch)
         print('Epoch {:d} checkpoint saved'.format(epoch))
         if self.config['log_visdom']:
             self.vis.save(envs=[self.vis_env])
@@ -487,6 +489,7 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
     """
     if train:
         assert criterion is not None
+    #org_weights = model.fc_xyz.weight.data.cpu().numpy()
         
     with torch.set_grad_enabled(train):
 
@@ -525,7 +528,20 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
                         model.parameters(), max_grad_norm)
                 
                 optim.learner.step()
-
+            """
+            new_weights = model.fc_xyz.weight.data.cpu().numpy()
+            delta_w = np.linalg.norm(new_weights-org_weights)
+            if delta_w > 1e-7:
+                print('-----------------------------------------------------------------------')
+                print('----------------------- Still changing base poses ---------------------')
+                print(delta_w)
+                print('-----------------------------------------------------------------------')
+            else:
+                print('-----------------------------------------------------------------------')
+                print('Poses frozen')
+                print(delta_w)
+                print('-----------------------------------------------------------------------')
+            """
             return loss.item(), output, [i.item() for i in loss_list] if type(loss_list) is list else None
         else:
             return 0, output, None
