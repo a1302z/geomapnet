@@ -1,26 +1,42 @@
 [![License CC BY-NC-SA 4.0](https://img.shields.io/badge/license-CC4.0-blue.svg)](https://raw.githubusercontent.com/NVIDIA/FastPhotoStyle/master/LICENSE.md)
-![Python 3.5](https://img.shields.io/badge/python-3.5-green.svg) ![Python 2.7](https://img.shields.io/badge/python-2.7-green.svg)
-# Geometry-Aware Learning of Maps for Camera Localization 
+![Python 3.5](https://img.shields.io/badge/python-3.5-green.svg) 
+<!--- ![Python 2.7](https://img.shields.io/badge/python-2.7-green.svg) --->
+# Repository for my Master's Thesis 'Visuallocalization under challenging conditions'
+<b> based on Nvidia's 'Geometry-Aware Learning of Maps for Camera Localization' </b>
 
-## License
+## Credits
+This repository is a fork of [NVIDIA's mapnet repository](https://github.com/NVlabs/geomapnet)
+
+[Leonhard Feiner](https://github.com/LeonhardFeiner) contributed equally to include support for learning semantic labels (later on called multitask learning) until commit [7e5c754](https://github.com/a1302z/geomapnet/commit/7e5c754136a3cd2c04f1ad01b240908092e04636). 
+### License
 
 Copyright (C) 2018 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode). 
 
-<b> This documentation was modified by Leonhard Feiner and Alexander Ziller. </b>
 
 ## Documentation 
 
-This is the PyTorch implementation of CVPR 2018 paper
+The original CVPR 2018 paper can be found at
 
 [Samarth Brahmbhatt, Jinwei Gu, Kihwan Kim, James Hays, and Jan Kautz. Geometry-Aware Learning of Maps for Camera Localization. CVPR 2018.](https://arxiv.org/abs/1712.03342).
 
-including Dual-Input and Multitask model developed during Advanced Deep Learning practical. 
-<b> Note: The latter two are designed only for DeepLoc dataset as they require semantic labels </b>
-
-### A four-minute video summary (click below for the video)
-
+Video to original result: \
 [![mapnet](./figures/mapnet.png)](https://www.youtube.com/watch?v=X6mF_IbOb4A)
+
+## Modifications to NVIDIA repository
+Modifications by Leonhard Feiner and Alexander Ziller: 
+ - Support for DeepLoc dataset
+ - Development of Dual-Input model (additional semantics as input to model)
+ - Development of Multitask model (additional semantics as output to model)
+ 
+Modifications by Alexander Ziller:
+ - Support for AachenDayNight and Cambridge Landmarks dataset
+ - Including augmentations for AachenDayNight dataset (using CycleGANs)
+
+
+
+
+
 
 ## Setup
 
@@ -35,6 +51,19 @@ MapNet uses a Conda environment that makes it easy to install all dependencies.
 3. Activate the environment: `conda activate mapnet_release`.
 
 ## Data
+Currently supported datasets:
+ - [DeepLoc](http://deeploc.cs.uni-freiburg.de/)
+ - [CambridgeLandmarks](http://mi.eng.cam.ac.uk/projects/relocalisation/)
+ - [AachenDayNight](https://www.visuallocalization.net)
+ - 7Scenes
+ - RobotCar (see remark in [Setup](##-setup ) )
+ 
+### Getting Started
+To use a dataset:
+ 1. Create in data/deepslam_data a directory with the corresponding name e.g. AachenDayNight
+ 2. Download data into this directory
+ 3. Go to scripts directory and run dataset_mean.py and calc_pose_stats.py (also good to verify data structure is correct)
+<!---
 We support the
 [7Scenes](https://www.microsoft.com/en-us/research/project/rgb-d-dataset-7-scenes/), the [Oxford RobotCar](http://robotcar-dataset.robots.ox.ac.uk/) and the [DeepLoc](http://deeploc.cs.uni-freiburg.de/) datasets.
 now. You can also write your own PyTorch dataloader for other datasets and put it in the
@@ -79,12 +108,85 @@ the camera models provided by the dataset, and scales them such that the shortes
 side is 256 pixels.
 
 ---
+--->
+
 
 ## Running the code
 
+### Models
+The following models are available
+ - Posenet: Standard visuallocalization network by Alex Kendall
+ - Mapnet: Base where this repository is forked from
+ - Mapnet++: Mapnet with additional visual odometry and GPS data
+ - SemanticOutput: Model does not learn localization but only semantics
+ - Dual-Input (semanticV3): Mapnet with additional semantics as input
+ - Multitask: Mapnet with additional semantics as output (learning target)
+
+### Training
+The executable script is `scripts/train.py`. Please go to the `scripts` folder to run these commands. (The DeepLoc dataset does not require a scene) For example:
+
+
+- PoseNet on `DeepLoc`: `python train.py --dataset DeepLoc --config_file configs/posenet.ini --model posenet`
+
+- MapNet on `DeepLoc`: `python train.py --dataset DeepLoc --config_file configs/mapnet.ini --model mapnet`
+
+- Dual-Input on `DeepLoc`: `python train.py --dataset DeepLoc --config_file configs/mapnet-multiinput.ini --model semanticV3 --device 0
+--learn_beta --learn_gamma`
+
+- Multitask  on `DeepLoc`: `python train.py --dataset DeepLoc --config_file configs/uncertainty-criterion.ini --model multitask
+--learn_beta --learn_gamma --learn_sigma --uncertainty_criterion`
+
+<!---
+- PoseNet on `chess` from `7Scenes`: `python train.py --dataset 7Scenes
+--scene chess --config_file configs/posenet.ini --model posenet --device 0
+--learn_beta --learn_gamma`
+
+![train.png](./figures/train.png)
+
+- MapNet on `chess` from `7Scenes`: `python train.py --dataset 7Scenes
+--scene chess --config_file configs/mapnet.ini --model mapnet
+--device 0 --learn_beta --learn_gamma`
+
+- MapNet++ is finetuned on top of a trained MapNet model:
+`python train.py --dataset 7Scenes --checkpoint <trained_mapnet_model.pth.tar>
+--scene chess --config_file configs/mapnet++_7Scenes.ini --model mapnet++
+--device 0 --learn_beta --learn_gamma`
+
+![train.png](./figures/train.png)
+
+
+- MapNet on `chess` from `7Scenes`: `python train.py --dataset 7Scenes
+--scene chess --config_file configs/mapnet.ini --model mapnet
+--device 0 --learn_beta --learn_gamma`
+
+--->
+- MapNet++ model on `heads` from a pretrained MapNet model: `python train.py --dataset 7Scenes --checkpoint logs/7Scenes_heads_mapnet_mapnet_learn_beta_learn_gamma/epoch_250.pth.tar --scene heads --config_file configs/mapnet++_7Scenes.ini --model mapnet++ --device 0 --learn_beta --learn_gamma`
+
+
+For MapNet++ training, you will need visual odometry (VO) data (or other
+sensory inputs such as noisy GPS measurements). For 7Scenes, we provided the
+preprocessed VO computed with the DSO method. For RobotCar, we use the provided
+stereo_vo. If you plan to use your own VO data (especially from a monocular
+camera) for MapNet++ training, you will need to first align the VO with the
+world coordinate (for rotation and scale). Please refer to the "Align VO"
+section below for more detailed instructions.
+
+
+The meanings of various command-line parameters are documented in
+`scripts/train.py`. The values of various hyperparameters are defined in a 
+separate .ini file. We provide some examples in the `scripts/configs` directory,
+along with a [README](./scripts/configs/README.md) file explaining some
+hyper-parameters.
+
+If you have `visdom = yes` in the config file, you will need to start a Visdom
+server for logging the training progress:
+
+`python -m visdom.server -env_path=scripts/logs/`.
+
+
 ### Demo/Inference
-The trained models for all experiments (7Scenes and RobotCar) presented in the paper can be downloaded
-[here](https://drive.google.com/open?id=1J2QG_nHrRTKcDf9CGXRK9MWH1h-GuMLy).
+<!--- The trained models for all experiments (7Scenes and RobotCar) presented in the paper can be downloaded
+[here](https://drive.google.com/open?id=1J2QG_nHrRTKcDf9CGXRK9MWH1h-GuMLy). --->
 The inference script is `scripts/eval.py`. Here are some examples, assuming
 the models are downloaded in `scripts/logs`. Please go to the `scripts` folder to run the commands.
 
@@ -96,8 +198,6 @@ The DeepLoc dataset does not require a scene.
 $ python eval.py --dataset DeepLoc --model posenet \
 --weights logs/DeepLoc__posenet_posenet_learn_beta/epoch_300.pth.tar \
 --config_file configs/posenet.ini --val
-Median error in translation = 
-Median error in rotation    = 
 ```
 
 - MapNet:
@@ -105,8 +205,6 @@ Median error in rotation    =
 $ python eval.py --dataset DeepLoc --model mapnet \
 --weights logs/DeepLoc__mapnet_mapnet/epoch_300.pth.tar \
 --config_file configs/mapnet.ini --val --pose_graph
-Median error in translation = 
-Median error in rotation    = 
 ```
 
 - For evaluating on the `train` split remove the `--val` flag
@@ -123,8 +221,6 @@ for more information on hyper-parameters and which config files to use.
 $ python eval.py --dataset DeepLoc --model semanticV3 \
 --weights logs/DeepLoc__semanticV3_mapnet-multiinput/epoch_300.pth.tar \
 --config_file configs/mapnet-multiinput.ini --val
-Median error in translation = 
-Median error in rotation    = 
 ```
 
 - Multitask:
@@ -132,12 +228,11 @@ Median error in rotation    =
 $ python eval.py --dataset DeepLoc --model multitask \
 --weights logs/DeepLoc__multitask_uncertainty-criterion_learn_beta_learn_gamma_learn_sigma_uncertainty_criterion/epoch_300.pth.tar \
 --config_file configs/uncertainty-criterion.ini --val
-Median error in translation = 
-Median error in rotation    = 
 ```
 
 ---
 
+<!--- 
 #### 7_Scenes
 - MapNet++ with pose-graph optimization (i.e., MapNet+PGO) on `heads`:
 ```
@@ -214,75 +309,8 @@ $ python eval.py --dataset RobotCar --scene loop --model mapnet \
 Mean error in translation = 9.84 m
 Mean error in rotation    = 3.96 degrees
 ```
+--->
 
-
-### Train
-The executable script is `scripts/train.py`. Please go to the `scripts` folder to run these commands. (The DeepLoc dataset does not require a scene) For example:
-
-
-- PoseNet on `DeepLoc`: `python train.py --dataset DeepLoc --config_file configs/posenet.ini --model posenet --device 0
---learn_beta`
-
-- MapNet on `DeepLoc`: `python train.py --dataset DeepLoc --config_file configs/mapnet.ini --model mapnet --device 0`
-
-- Dual-Input on `DeepLoc`: `python train.py --dataset DeepLoc --config_file configs/mapnet-multiinput.ini --model semanticV3 --device 0
---learn_beta --learn_gamma`
-
-- Multitask  on `DeepLoc`: `python train.py --dataset DeepLoc --config_file configs/uncertainty-criterion.ini --model semanticV3 --device 0
---learn_beta --learn_gamma --learn_sigma --uncertainty_criterion`
-
-- PoseNet on `chess` from `7Scenes`: `python train.py --dataset 7Scenes
---scene chess --config_file configs/posenet.ini --model posenet --device 0
---learn_beta --learn_gamma`
-
-![train.png](./figures/train.png)
-
-- MapNet on `chess` from `7Scenes`: `python train.py --dataset 7Scenes
---scene chess --config_file configs/mapnet.ini --model mapnet
---device 0 --learn_beta --learn_gamma`
-
-- MapNet++ is finetuned on top of a trained MapNet model:
-`python train.py --dataset 7Scenes --checkpoint <trained_mapnet_model.pth.tar>
---scene chess --config_file configs/mapnet++_7Scenes.ini --model mapnet++
---device 0 --learn_beta --learn_gamma`
-
-![train.png](./figures/train.png)
-
-
-- MapNet on `chess` from `7Scenes`: `python train.py --dataset 7Scenes
---scene chess --config_file configs/mapnet.ini --model mapnet
---device 0 --learn_beta --learn_gamma`
-
-
-For example, we can train MapNet++ model on `heads` from a pretrained MapNet model:
-
-```
-$ python train.py --dataset 7Scenes \
---checkpoint logs/7Scenes_heads_mapnet_mapnet_learn_beta_learn_gamma/epoch_250.pth.tar \
---scene heads --config_file configs/mapnet++_7Scenes.ini --model mapnet++ \
---device 0 --learn_beta --learn_gamma
-```
-
-
-For MapNet++ training, you will need visual odometry (VO) data (or other
-sensory inputs such as noisy GPS measurements). For 7Scenes, we provided the
-preprocessed VO computed with the DSO method. For RobotCar, we use the provided
-stereo_vo. If you plan to use your own VO data (especially from a monocular
-camera) for MapNet++ training, you will need to first align the VO with the
-world coordinate (for rotation and scale). Please refer to the "Align VO"
-section below for more detailed instructions.
-
-
-The meanings of various command-line parameters are documented in
-`scripts/train.py`. The values of various hyperparameters are defined in a 
-separate .ini file. We provide some examples in the `scripts/configs` directory,
-along with a [README](./scripts/configs/README.md) file explaining some
-hyper-parameters.
-
-If you have `visdom = yes` in the config file, you will need to start a Visdom
-server for logging the training progress:
-
-`python -m visdom.server -env_path=scripts/logs/`.
 
 ---
 ### Visual Explanations of Model
