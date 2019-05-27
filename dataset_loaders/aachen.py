@@ -14,13 +14,14 @@ def identity(x):
     return x
 
 class camerapoint:
-    def __init__(self, position = np.zeros(3), rotation = np.zeros(4), img_path = None):
+    def __init__(self, position = np.zeros(3), rotation = np.zeros(4), img_path = None, point_cloud_indices = None):
         self.position = position
         self.rotation = rotation
         self.img_path = img_path
         self.night_img = None
         self.pose = None
         self.sem_path = None
+        self.point_cloud_indices = point_cloud_indices
     
     def set_night_image(self, night_img):
         self.night_img = night_img
@@ -30,6 +31,9 @@ class camerapoint:
         
     def set_sem_path(self, sem_path):
         self.sem_path = sem_path
+        
+    def set_point_cloud_indices(self, point_cloud_indices):
+        self.point_cloud_indices = point_cloud_indices
         
     def __str__(self):
         return self.img_path+str(self.pose)#+str(self.rotation)+str(self.position)
@@ -220,8 +224,16 @@ def main():
     print(type(x))
     for i in x:
         print(type(i))
+        
     loader[0]
     print(len(loader))
+    
+    loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', False, train_split=20, night_augmentation=True)
+    for i, (d, t) in enumerate(loader):
+        if i % 100 == 0:
+            print('%d/%d'%(i,len(loader)))
+        if i > len(loader):
+            break
     
 if __name__ == '__main__':
     main()

@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch
 import numpy as np
+import pointnet
 """
 Copyright (C) 2018 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
@@ -528,6 +529,7 @@ class MultiTask3D(nn.Module):
       feat_dim=2048, filter_nans=False, input_size=(224,224), set_base_poses=None, freeze_feature_extraction=False):
         super(MultiTask3D, self).__init__()
         self.posenet = posenet
+        self.pointnet_feat = pointnet.PointNetfeat()
         """
         TODO Experiment with model architecture
         Inspired by U-Net
@@ -546,7 +548,7 @@ class MultiTask3D(nn.Module):
         self.feature_extractor = self.posenet.feature_extractor
         self.feature_extractor.avgpool = nn.AdaptiveAvgPool2d(1)
         fe_out_planes = self.feature_extractor.fc.in_features
-        self.feature_extractor.fc = nn.Linear(fe_out_planes, feat_dim)
+        self.feature_extractor.fc = nn.Linear(fe_out_planes, feat_dim+1024)#1024 of point net
 
         self.fc_xyz  = nn.Linear(feat_dim, 3)
         self.fc_wpqr = nn.Linear(feat_dim, 3)
@@ -581,6 +583,12 @@ class MultiTask3D(nn.Module):
         
                     
     def __feature_vector__(self, x):
+        """
+        x[0] = image
+        x[1] = point cloud
+        """
+        p = x[1]
+        x = x[0]
         s = x.size()
         x = x.view(-1, 3, self.input_size[0], self.input_size[1])
         x0 = x
@@ -627,6 +635,8 @@ class MultiTask3D(nn.Module):
         
         poses = self.posenet.feature_extractor.avgpool(x)
         poses = poses.view(poses.size(0), -1)
+        point_feat, trans, trans_feat = self.pointnet_feat(p) #(x (-1,1024), trans, trans_feat)
+        poses = torch.cat(poses, point_feat)
         poses = self.posenet.feature_extractor.fc(poses)
         poses = F.relu(poses)
         if self.droprate > 0:
@@ -645,4 +655,11 @@ class MultiTask3D(nn.Module):
         return (poses, semantic)
     
     
-    
+if __name__ == '__main__':
+    from torchvision import models
+    fe = models.resnet34(pretrained=True)
+    pn = PoseNet(fe)
+    MapNet(pn)
+    MultiTask(pn)
+    MultiTask3D(pn)
+    print('No errors in constructors')
