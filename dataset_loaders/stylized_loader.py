@@ -31,37 +31,35 @@ class camerapoint:
         return self.img_path+' '+str(self.pose)
 
 
-class Cambridge(data.Dataset):
+class StylizedCambridge(data.Dataset):
     
-    def __init__(self, data_path, train, train_split=0.7, overfit=None, scene='KingsCollege',
-                seed=7,input_types='img', output_types='pose', real=False
-                ,transform=identity, semantic_transform=identity, target_transform=identity):
+    def __init__(self, data_path, train, train_split=0.7, overfit=None, scene='ShopFacade',
+                styles = 4, seed=7, transform=identity, target_transform=identity, real=True, **kwargs):
+        
+        print('Start')
  
         np.random.seed(seed)
         self.data_path = data_path
         self.scene = scene
-        self.input_types = input_types if type(input_types) is list else [input_types]
-        self.output_types = output_types if type(output_types) is list else [output_types]
         self.train = train
-        print_debugging_info = True
         self.transforms = {
             'img' : transform, 
-            #'right' : transform,
-            #'label_colorized' : semantic_colorized_transform,
-            'label' : semantic_transform,
-            #'depth' : transform,
             'pose' : target_transform
         }
         
         
-        
         if self.train or overfit is not None:
-            training_file = open(os.path.join(self.data_path, self.scene, 'dataset_train.txt'), 'r')
+            if styles == 0:
+                training_file = open(os.path.join(self.data_path, self.scene, 'dataset_train.txt'), 'r')
+            else:
+                training_file = open(os.path.join(self.data_path, self.scene, 'dataset_train_{}_styles.txt'.format(styles)), 'r')
         else:
             training_file = open(os.path.join(self.data_path, self.scene, 'dataset_test.txt'), 'r')
             
         lines = training_file.readlines()
         lines = [x.strip() for x in lines]
+        
+        print('Read points')
         
         self.points = []
         for l in lines[3:]:
@@ -73,6 +71,8 @@ class Cambridge(data.Dataset):
         
         if overfit is not None:
             self.points = self.points[:overfit]
+            
+        print('Process points')
             
         pose_stats_filename = os.path.join(self.data_path, self.scene, 'pose_stats.txt')
         if train and not real:
@@ -86,48 +86,27 @@ class Cambridge(data.Dataset):
             np.savetxt(
                 pose_stats_filename, np.vstack(
                     (mean_t, std_t)), fmt='%8.7f')
-            #print('Saved pose stats to %s'%pose_stats_filename)
+            print('Saved pose stats to %s'%pose_stats_filename)
         else:
+            print('Using pose stats from {}'.format(pose_stats_filename))
             mean_t, std_t = np.loadtxt(pose_stats_filename)
         for p in self.points:
             pose = process_poses_quaternion(np.asarray([p.position]), np.asarray([p.rotation]), mean_t, std_t, np.eye(3), np.zeros(3), np.ones(1))
             p.set_pose(pose.flatten())
+        print('Finish setup')
 
             
     def __getitem__(self, index):
         point = self.points[index]
         inps = []
         outs = []
-        for inp in self.input_types:
-            if inp == 'img':
-                img_path = os.path.join(self.data_path,self.scene,point.img_path)
-                img = load_image(img_path)
-                img = None if img is None else self.transforms['img'](img)
-                inps.append(img)
-            elif inp == 'label':
-                img = single_channel_loader(point.sem_path)
-                img = None if img is None else self.transforms['label'](img)
-                inps.append(img)
-            else:
-                raise NotImplementedError('Not implemented yet (%s)'%str(inp))
-        for out in self.output_types:
-            if out == 'pose':
-                p = point.pose
-                p = None if p is None else self.transforms['pose'](p)
-                outs.append(p)
-            elif out == 'label':
-                #print('GET SEMANTIC LAB')
-                img = single_channel_loader(point.sem_path)
-                #print(img.shape)
-                img = None if img is None else self.transforms['label'](img)
-                #print(img.shape)
-                outs.append(img)
-            else:
-                raise NotImplementedError('Not implemented yet')
-                
+        img_path = os.path.join(self.data_path,self.scene,point.img_path)
+        img = load_image(img_path)
+        img = self.transforms['img'](img)
+        p = point.pose
+        p = self.transforms['pose'](p)
         
-        
-        return inps[0] if len(inps) <= 1 else inps, outs[0] if len(outs) <= 1 else outs
+        return img, p
         
         
     
@@ -136,7 +115,8 @@ class Cambridge(data.Dataset):
     
     
 def main():
-    loader = Cambridge('../data/deepslam_data/CambridgeLandmarks/', True)
+    loader = StylizedCambridge('/storage/user/zillera/stylized_localization/', True, scene='ShopFacade224', 
+                              styles = 16)
     print(len(loader))
     print(loader[10])
     

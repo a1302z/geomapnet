@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch
 import numpy as np
-import pointnet
+import models.pointnet as pointnet
 """
 Copyright (C) 2018 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
@@ -41,7 +41,9 @@ class PoseNet(nn.Module):
                  feat_dim=2048, filter_nans=False, freeze_feature_extraction=False,
                  activation_function=F.relu, set_base_poses=None):
         super(PoseNet, self).__init__()
+        print('Freeze features: {}\nActivation function: {}\nSet base poses: {}'.format(freeze_feature_extraction, activation_function, set_base_poses))
         self.droprate = droprate
+        self.activation_function=activation_function
 
         # replace the last FC layer in feature extractor
         self.feature_extractor = feature_extractor
@@ -83,7 +85,7 @@ class PoseNet(nn.Module):
 
     def forward(self, x):
         x = self.feature_extractor(x)
-        x = activation_function(x)
+        x = self.activation_function(x)
         if self.droprate > 0:
             x = F.dropout(x, p=self.droprate, training=self.training)
 
@@ -548,10 +550,10 @@ class MultiTask3D(nn.Module):
         self.feature_extractor = self.posenet.feature_extractor
         self.feature_extractor.avgpool = nn.AdaptiveAvgPool2d(1)
         fe_out_planes = self.feature_extractor.fc.in_features
-        self.feature_extractor.fc = nn.Linear(fe_out_planes, feat_dim+1024)#1024 of point net
-
-        self.fc_xyz  = nn.Linear(feat_dim, 3)
-        self.fc_wpqr = nn.Linear(feat_dim, 3)
+        self.feature_extractor.fc = nn.Linear(fe_out_planes, feat_dim)
+        #1024 of point net
+        self.fc_xyz  = nn.Linear(1024+feat_dim, 3)
+        self.fc_wpqr = nn.Linear(1024+feat_dim, 3)
         if filter_nans:
             self.fc_wpqr.register_backward_hook(hook=filter_hook)
 
@@ -587,7 +589,7 @@ class MultiTask3D(nn.Module):
         x[0] = image
         x[1] = point cloud
         """
-        p = x[1]
+        p = x[1].squeeze(0)
         x = x[0]
         s = x.size()
         x = x.view(-1, 3, self.input_size[0], self.input_size[1])
@@ -635,22 +637,26 @@ class MultiTask3D(nn.Module):
         
         poses = self.posenet.feature_extractor.avgpool(x)
         poses = poses.view(poses.size(0), -1)
-        point_feat, trans, trans_feat = self.pointnet_feat(p) #(x (-1,1024), trans, trans_feat)
-        poses = torch.cat(poses, point_feat)
         poses = self.posenet.feature_extractor.fc(poses)
         poses = F.relu(poses)
         if self.droprate > 0:
             poses = F.dropout(poses, p=self.droprate, training=self.training)
+        
+        point_feat, trans, trans_feat = self.pointnet_feat(p) #(x (-1,1024), trans, trans_feat)
+        #print(poses.size())
+        #print(point_feat.size())
+        poses = torch.cat((poses, point_feat), dim=1)
         return poses, semantic
         
         
     def forward(self, x):
-        s = x.size()
+        s = x[0].size()
         poses, semantic = self.__feature_vector__(x)
         xyz  = self.fc_xyz(poses)
         wpqr = self.fc_wpqr(poses)
         poses = torch.cat((xyz, wpqr), 1)
         poses = poses.view(s[0], s[1], -1) #Shape(10, 3, 6)
+        #print('Output poses.shape: %s'%str(poses.shape))
         
         return (poses, semantic)
     

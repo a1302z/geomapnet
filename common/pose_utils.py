@@ -260,9 +260,11 @@ def calc_vos_simple(poses):
     for p in poses:
         pvos = [p[i + 1].unsqueeze(0) - p[i].unsqueeze(0)
                 for i in range(len(p) - 1)]
-        vos.append(torch.cat(pvos, dim=0))
-    vos = torch.stack(vos, dim=0)
-
+        if len(pvos) > 0:
+            vos.append(torch.cat(pvos, dim=0))
+    if len(vos) > 0:
+        vos = torch.stack(vos, dim=0)
+    
     return vos
 
 

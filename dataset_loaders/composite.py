@@ -74,6 +74,12 @@ class MF(data.Dataset):
                                 real=self.real, **kwargs)
             if self.include_vos and self.real:
                 self.gt_dset = Cambridge(*args, skip_images=True, real=False, **kwargs)
+        elif dataset == 'stylized_localization':
+            from dataset_loaders.stylized_loader import StylizedCambridge
+            self.dset = StylizedCambridge(*args, 
+                                real=self.real, **kwargs)
+            if self.include_vos and self.real:
+                self.gt_dset = StylizedCambridge(*args, skip_images=True, real=False, **kwargs)
         else:
             raise NotImplementedError
 
@@ -107,7 +113,32 @@ class MF(data.Dataset):
         clip = [self.dset[i] for i in idx]
 
         img_list, output_tuple_list = zip(*clip)
-        imgs = torch.stack(img_list, dim=0)
+        
+        if type(img_list[0]) == tuple:
+            img_list = tuple(zip(*img_list))
+            """
+            print('img list (len =  %d)'%len(img_list))
+            for i in img_list:
+                print(' - ', end='')
+                if type(i) is list or type(i) is tuple:
+                    print('%s (len(%d))'%(type(i), len(i)))
+                    for j in i:
+                        print('   - ', end='')
+                        if type(j) is torch.Tensor:
+                            print('%s (%s)'%(type(j), str(j.size())))
+                        else:
+                            print('%s'%type(j))
+                else:
+                    print(type(i))       
+            """
+            imgs = [torch.stack(img, dim=0) for img in img_list[:-1]]
+            
+            
+            imgs.append(torch.stack(img_list[-1], dim=0))
+            imgs = tuple(i for i in imgs)
+            
+        else:
+            imgs = torch.stack(img_list, dim=0)
 
         if type(output_tuple_list[0]) == tuple or type(output_tuple_list[0]) == list:
             if self.include_vos:

@@ -69,7 +69,7 @@ def safe_collate(batch):
 class Trainer(object):
     def __init__(self, model, optimizer, train_criterion, config_file, experiment,
                  train_dataset, val_dataset, device, checkpoint_file=None,
-                 resume_optim=False, val_criterion=None, visdom_server='http://localhost'):
+                 resume_optim=False, val_criterion=None, visdom_server='http://localhost', visdom_port=8097):
         """
         General purpose training script
         :param model: Network model
@@ -140,7 +140,7 @@ class Trainer(object):
             # start plots
             self.vis_env = self.experiment
             self.loss_win = 'loss_win'
-            self.vis = Visdom(server=visdom_server)
+            self.vis = Visdom(server=visdom_server, port=visdom_port)
             self.vis.line(X=np.zeros((1, 2)), Y=np.zeros((1, 2)), win=self.loss_win,
                           opts={'legend': ['train_loss', 'val_loss'], 'xlabel': 'epochs',
                                 'ylabel': 'loss'}, env=self.vis_env)
@@ -492,10 +492,16 @@ def step_feedfwd(data, model, cuda, target=None, criterion=None, optim=None,
     #org_weights = model.fc_xyz.weight.data.cpu().numpy()
         
     with torch.set_grad_enabled(train):
-
-        data_var = Variable(data, requires_grad=train)
-        if cuda:
-            data_var = data_var.cuda(async=True)
+        if type(data) is list or type(data) is target:
+            data_var = [Variable(d, requires_grad=train) for d in data]
+            if cuda:
+                for i, d in enumerate(data_var):
+                    data_var[i] = d.cuda(async=True)
+            data_var = tuple(data_var)
+        else:
+            data_var = Variable(data, requires_grad=train)
+            if cuda:
+                data_var = data_var.cuda(async=True)
         output = model(data_var)
 
         if criterion is not None:

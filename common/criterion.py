@@ -138,11 +138,12 @@ class MapNetCriterion(nn.Module):
         q_loss = self.q_loss_fn(pred.view(-1, *s[2:])[:, 3:],
                                 targ.view(-1, *s[2:])[:, 3:])
         
+        
         vo_t_loss = self.t_loss_fn(pred_vos.view(-1, *s[2:])[:, :3],
-                                   targ_vos.view(-1, *s[2:])[:, :3])
+                                   targ_vos.view(-1, *s[2:])[:, :3]) if not ((type(pred_vos) == list and len(pred_vos) == 0) or (type(targ_vos) == list and len(targ_vos) == 0)) else 0.0
         
         vo_q_loss = self.q_loss_fn(pred_vos.view(-1, *s[2:])[:, 3:],
-                                   targ_vos.view(-1, *s[2:])[:, 3:])
+                                   targ_vos.view(-1, *s[2:])[:, 3:]) if not ((type(pred_vos) == list and len(pred_vos) == 0) or (type(targ_vos) == list and len(targ_vos) == 0)) else 0.0
         
         
         abs_loss =(
