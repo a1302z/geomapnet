@@ -6,5 +6,5 @@
 #SBATCH --time=40:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --mail-type=ALL
-srun python train.py --dataset AachenDayNight --model mapnet --config configs/mapnet.ini --server 'atbeetz18.informatik.tu-muenchen.de' --learn_beta --learn_gamma
+srun python train.py --dataset AachenDayNight --model mapnet --config configs/mapnet.ini --server 'atcremers3.informatik.tu-muenchen.de' --learn_beta --learn_gamma
 

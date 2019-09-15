@@ -6,4 +6,4 @@
 #SBATCH --time=30:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --mail-type=ALL
-srun python train.py --model posenet --dataset AachenDayNight --config configs/posenet.ini --server atbeetz18.informatik.tu-muenchen.de
+srun python train.py --model posenet --dataset AachenDayNight --config configs/posenet.ini --server atcremers3.informatik.tu-muenchen.de

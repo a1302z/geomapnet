@@ -34,11 +34,11 @@ if not DISPLAY:
 # config
 parser = argparse.ArgumentParser(description='Evaluation script for pose regression networks')
 parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'AachenDayNight', 
-                                                   'CambridgeLandmarks'),
+                                                   'CambridgeLandmarks', 'stylized_localization'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, default='', help='Scene name')
 parser.add_argument('--weights', type=str, help='trained weights to load')
-parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++', 'multitask', 'semanticOutput',
+parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++', 'multitask', 'multitask3d', 'semanticOutput',
                                         'semanticV0', 'semanticV1','semanticV2', 'semanticV3', 'semanticV4'),
                     help='Model to use (mapnet includes both MapNet and MapNet++ since their'
                     'evluation process is the same and they only differ in the input weights'
@@ -125,10 +125,11 @@ if (args.model.find('mapnet') >= 0) or args.pose_graph or (args.model.find('sema
         srx = section.getfloat('s_rel_trans', 20)
         srq = section.getfloat('s_rel_rot', 20)
         
-data_dir = osp.join('..', 'data', args.dataset)
+data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
 stats_filename = osp.join(data_dir, args.scene, 'stats.txt')
+print('load stats from {}'.format(stats_filename))
 stats = np.loadtxt(stats_filename)
-crop_size_file = osp.join(data_dir, 'crop_size.txt')
+crop_size_file = osp.join('..', 'data', args.dataset, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 resize = int(max(crop_size))
 
@@ -154,7 +155,7 @@ feature_extractor = models.resnet34(pretrained=False)
 posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=False,
                   feat_dim=feature_dim, activation_function=af, 
                  set_base_poses=set_base_poses)
-if args.model in ['multitask', 'semanticOutput']:
+if args.model in ['multitask', 'multitask3d', 'semanticOutput']:
     classes = None
     input_size = None
     if args.dataset == 'DeepLoc':
@@ -183,6 +184,8 @@ elif args.model == 'semanticV4':
 elif args.model == 'multitask':
     model = MultiTask(posenet=posenet, classes=classes, input_size=input_size, feat_dim=feature_dim, 
                  set_base_poses=set_base_poses)
+elif args.model == 'multitask3d':
+    model = MultiTask3D(posenet=posenet, classes=classes, input_size=input_size,feat_dim=feature_dim,set_base_poses=set_base_poses)
 elif args.model == 'semanticOutput':
     model = SemanticOutput(posenet=posenet, classes=classes, input_size=input_size, feat_dim=feature_dim)
 else:
@@ -259,6 +262,9 @@ elif 'semantic' in args.model:
     input_types = ['img', 'label_colorized']
 elif 'multitask' in args.model:
     output_types = ['pose', 'label']
+if 'multitask3d' == args.model:
+    assert args.dataset == 'AachenDayNight', 'Multitask3d only for AachenDayNight dataset available so far'
+    input_types = ['img', 'point_cloud']
 if args.dataset == 'DeepLoc':
         
         #print("Input types: %s\nOutput types: %s"%(input_types, output_types))
@@ -292,6 +298,12 @@ elif args.dataset in ['AachenDayNight', 'CambridgeLandmarks']:
                  )
     if args.dataset == 'AachenDayNight':
         kwargs['night_augmentation'] = args.use_augmentation
+elif args.dataset == 'stylized_localization':
+    kwargs = dict(kwargs,
+                    overfit=args.overfit,
+                    scene=args.scene,
+                    styles=0
+                 )
 
 if (args.model.find('mapnet') >= 0) or args.pose_graph or (args.model.find('semantic') >= 0) or (args.model.find('multitask') >= 0):
     if args.pose_graph:
@@ -321,6 +333,10 @@ elif args.dataset == 'AachenDayNight':
 elif args.dataset == 'CambridgeLandmarks':
     from dataset_loaders.cambridge import Cambridge
     data_set = Cambridge(**kwargs)
+    L = len(data_set)
+elif args.dataset == 'stylized_localization':
+    from dataset_loaders.stylized_loader import StylizedCambridge
+    data_set = StylizedCambridge(**kwargs)
     L = len(data_set)
 else:
     raise NotImplementedError

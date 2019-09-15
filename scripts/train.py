@@ -1,6 +1,7 @@
 import set_paths
 
-from torchvision import transforms, models
+from torchvision import transforms
+from torchvision import models as pretrainedmodels
 from torch import nn
 import torch
 import json
@@ -27,12 +28,11 @@ Main training script for MapNet
 
 parser = argparse.ArgumentParser(description='Training script for PoseNet and'
                                              'MapNet variants')
-parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'AachenDayNight', 'CambridgeLandmarks'),
+parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'AachenDayNight', 'CambridgeLandmarks', 'stylized_localization'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, default='', help='Scene name')
 parser.add_argument('--config_file', type=str, help='configuration file')
-parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++', 'multitask', 'semanticOutput',
-                                        'semanticV0', 'semanticV1','semanticV2', 'semanticV3', 'semanticV4'),
+parser.add_argument('--model', choices=('posenet', 'mapnet', 'mapnet++', 'multitask', 'multitask3d', 'semanticOutput', 'semanticV0', 'semanticV1','semanticV2', 'semanticV3', 'semanticV4'),
                     help='Model to train')
 parser.add_argument('--device', type=str, default=None,
                     help='value to be set to $CUDA_VISIBLE_DEVICES')
@@ -53,9 +53,11 @@ parser.add_argument('--uncertainty_criterion', action='store_true', help='Use cr
 parser.add_argument('--learn_direct_sigma', action='store_true', help='Learn sigma directly instead of log of sigma')
 parser.add_argument('--init_seed', type=int, default=0, help='Set seed for random initialization of model')
 parser.add_argument('--server', type=str, default='http://localhost', help='Set visdom server address')
+parser.add_argument('--port', type=int, default=8097, help='set visdom port')
 parser.add_argument('--crop_size_file', type=str, default='crop_size.txt', help='Specify crop size file')
 parser.add_argument('--use_augmentation', action='store_true', help='Use augmented images. Needs to be supported by dataloader (currently only AachenDayNight)')
 parser.add_argument('--only_augmentation', action='store_true', help='Use only augmented images. Not in combination with use augmentation option!')
+parser.add_argument('--styles', type=int, default=0, help='Only for stylized dataset')
 
 args = parser.parse_args()
 
@@ -70,10 +72,11 @@ weight_decay = optim_config.pop('weight_decay')
 loss_fn_config = section.get('loss_fn', 'l1').lower()
 
 
-data_dir = osp.join('..', 'data', args.dataset)
-stats_file = osp.join(data_dir, args.scene, 'stats.txt')
+data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
+stats_file = osp.join(data_dir, args.scene, 'stats.txt' if args.styles == 0 else 'stats_{}_styles.txt'.format(args.styles))
+print('Using {} as stats file'.format(stats_file))
 stats = np.loadtxt(stats_file)
-crop_size_file = osp.join(data_dir, args.crop_size_file)
+crop_size_file = osp.join('..', 'data', args.dataset, args.crop_size_file)
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 
 section = settings['hyperparameters']
@@ -128,12 +131,12 @@ elif base_poses == 'gaussian':
     print('Base poses sampled from gaussian')
 else:
     print('Standard initialization for base poses')
-feature_extractor = models.resnet34(pretrained=True)
+feature_extractor = pretrainedmodels.resnet34(pretrained=True)
 posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=True,
                   filter_nans=(args.model == 'mapnet++'), feat_dim=feature_dim, 
                  freeze_feature_extraction = freeze, activation_function=af, 
                  set_base_poses=set_base_poses)
-if args.model in ['multitask', 'semanticOutput']:
+if args.model in ['multitask', 'semanticOutput', 'multitask3d']:
     classes = None
     input_size = None
     if args.dataset == 'DeepLoc':
@@ -151,12 +154,12 @@ elif 'mapnet' in args.model or args.model == 'semanticV0':
 elif args.model == 'semanticV1':
     model = SemanticMapNet(mapnet=posenet)
 elif args.model == 'semanticV2':
-    feature_extractor_sem = models.resnet34(pretrained=True)
+    feature_extractor_sem = pretrainedmodels.resnet34(pretrained=True)
     posenet_sem = PoseNet(feature_extractor_sem, droprate=dropout, pretrained=True,
                       filter_nans=(args.model=='mapnet++'))
     model = SemanticMapNetV2(mapnet_images=posenet, mapnet_semantics=posenet_sem)
 elif args.model == 'semanticV3':
-    feature_extractor_2 = models.resnet34(pretrained=True)
+    feature_extractor_2 = pretrainedmodels.resnet34(pretrained=True)
     model = SemanticMapNetV3(feature_extractor_img=feature_extractor, feature_extractor_sem=feature_extractor_2, droprate=dropout, pretrained=True,
         feat_dim=2048, filter_nans=(args.model=='mapnet++'))
 elif args.model == 'semanticV4':
@@ -165,6 +168,9 @@ elif args.model == 'semanticV4':
     model = MapNet(mapnet=posenetv2)
 elif args.model == 'multitask':
     model = MultiTask(posenet=posenet, classes=classes, input_size=input_size,feat_dim=feature_dim, 
+                     freeze_feature_extraction=freeze, set_base_poses=set_base_poses)
+elif args.model == 'multitask3d':
+    model = MultiTask3D(posenet=posenet, classes=classes, input_size=input_size,feat_dim=feature_dim, 
                      freeze_feature_extraction=freeze, set_base_poses=set_base_poses)
 elif args.model == 'semanticOutput':
     model = SemanticOutput(posenet=posenet, classes=classes, input_size=input_size,feat_dim=feature_dim)
@@ -263,9 +269,12 @@ elif args.model == 'semanticV4':
 elif args.model == 'semanticOutput':
     output_types = 'label'
 elif 'semantic' in args.model:
-     input_types = ['img', 'label_colorized']
+    input_types = ['img', 'label_colorized']
 elif 'multitask' in args.model:
-      output_types = ['pose', 'label']
+    output_types = ['pose', 'label']
+if 'multitask3d' == args.model:
+    assert args.dataset == 'AachenDayNight', 'Multitask3d only for AachenDayNight dataset available so far'
+    input_types = ['img', 'point_cloud']
 semantic_transform = (
             float_semantic_transform 
             if 'semanticV' in args.model else 
@@ -330,6 +339,15 @@ if args.model == 'posenet':
         from dataset_loaders.cambridge import Cambridge
         train_set = Cambridge(train=True, **kwargs)
         val_set = Cambridge(train=False, **kwargs)
+    elif args.dataset == 'stylized_localization':
+        kwargs = dict(kwargs,
+                      overfit=args.overfit,
+                      scene = args.scene,
+                      styles = args.styles
+                     )
+        from dataset_loaders.stylized_loader import StylizedCambridge
+        train_set = StylizedCambridge(train=True, **kwargs)
+        val_set = StylizedCambridge(train=False, **kwargs)
     elif args.dataset == 'RobotCar':
         from dataset_loaders.robotcar import RobotCar
         train_set = RobotCar(train=True, **kwargs)
@@ -362,6 +380,13 @@ elif 'mapnet' in args.model or 'semantic' in args.model or 'multitask' in args.m
         if args.dataset == 'AachenDayNight':
             kwargs['night_augmentation']=args.use_augmentation
             kwargs['only_augmentation']=args.only_augmentation
+            kwargs['verbose'] = False
+    elif args.dataset == 'stylized_localization':
+        kwargs = dict(kwargs,
+                      overfit=args.overfit,
+                      scene=args.scene,
+                      styles=args.styles
+                     )
         
     if '++' in args.model:
         train_set = MFOnline(
@@ -391,11 +416,13 @@ if args.learn_sigma:
 if args.uncertainty_criterion:
     experiment_name = '{:s}_uncertainty_criterion'.format(experiment_name)
 if det_seed >= 0:
-    experiment_name = '{:s}_seed{}'.format(experiment_name, det_seed)  
+    experiment_name = '{:s}_seed{}'.format(experiment_name, det_seed) 
+if args.styles > 0:
+    experiment_name = '{:s}_{}_styles'.format(experiment_name, args.styles)
 experiment_name += args.suffix
 trainer = Trainer(model, optimizer, train_criterion, args.config_file,
                   experiment_name, train_set, val_set, device=args.device,
-                  checkpoint_file=args.checkpoint, visdom_server = args.server,
+                  checkpoint_file=args.checkpoint, visdom_server = args.server, visdom_port = args.port,
                   resume_optim=args.resume_optim, val_criterion=val_criterion)
 lstm = args.model == 'vidloc'
 trainer.train_val(lstm=lstm, dual_target='multitask' in args.model)

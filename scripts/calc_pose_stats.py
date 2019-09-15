@@ -16,7 +16,7 @@ script to calculate pose translation stats (run first for every dataset)
 parser = argparse.ArgumentParser(
     description='Calculate pose translation stats')
 parser.add_argument('--dataset', type=str, choices=('7Scenes', 'DeepLoc', 'RobotCar', 'AachenDayNight',
-                                                   'CambridgeLandmarks'),
+                                                   'CambridgeLandmarks', 'stylized_localization'),
                     help='Dataset')
 parser.add_argument('--scene', type=str, default='', help='Scene name')
 args = parser.parse_args()
@@ -47,6 +47,9 @@ elif args.dataset == 'AachenDayNight':
 elif args.dataset == 'CambridgeLandmarks':
     from dataset_loaders.cambridge import Cambridge
     dset = Cambridge(**kwargs)
+elif args.dataset == 'stylized_localization':
+    from dataset_loaders.stylized_loader import StylizedCambridge
+    dset = StylizedCambridge(**kwargs)
 else:
     raise NotImplementedError
 

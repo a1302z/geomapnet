@@ -16,9 +16,10 @@ Computes the mean and std of pixels in a dataset
 
 parser = argparse.ArgumentParser(description='Dataset images statistics')
 parser.add_argument('--dataset', type=str, choices=('7Scenes',  'DeepLoc', 'RobotCar', 'AachenDayNight'
-                                                   , 'CambridgeLandmarks'),
+                                                   , 'CambridgeLandmarks', 'stylized_localization'),
                     help='Dataset', required=True)
 parser.add_argument('--scene', type=str, default='', help='Scene name')
+parser.add_argument('--styles', type=int, default=0, help='For stylized dataset')
 args = parser.parse_args()
 
 data_dir = osp.join('..', 'data', args.dataset)
@@ -46,6 +47,9 @@ elif args.dataset == 'AachenDayNight':
 elif args.dataset == 'CambridgeLandmarks':
     from dataset_loaders.cambridge import Cambridge
     dset = Cambridge(**kwargs)
+elif args.dataset == 'stylized_localization':
+    from dataset_loaders.stylized_loader import StylizedCambridge
+    dset = StylizedCambridge(styles = args.styles, **kwargs)
 elif args.dataset == 'RobotCar':
     from dataset_loaders.robotcar import RobotCar
     dset = RobotCar(**kwargs)
@@ -80,6 +84,6 @@ std_p /= N
 std_p -= (mean_p ** 2)
 print('Std. pixel = ', std_p)
 
-output_filename = osp.join('..', 'data', args.dataset, args.scene, 'stats.txt')
+output_filename = osp.join('..', 'data', 'deepslam_data', args.dataset, args.scene, 'stats.txt' if args.styles == 0 else 'stats_{}_styles.txt'.format(args.styles))
 np.savetxt(output_filename, np.vstack((mean_p, std_p)), fmt='%8.7f')
 print('{:s} written'.format(output_filename))
