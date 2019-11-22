@@ -322,7 +322,7 @@ elif args.dataset in ['AachenDayNight', 'CambridgeLandmarks']:
                       #concatenate_inputs=True
                  )
     if args.dataset == 'AachenDayNight':
-        kwargs['night_augmentation'] = args.use_augmentation
+        kwargs['night_augmentation'] = 'combined' if args.use_augmentation else None
         kwargs['resize'] = resize
 elif args.dataset == 'stylized_localization':
     kwargs = dict(kwargs,
