@@ -20,6 +20,7 @@ import os.path as osp
 import sys
 import numpy as np
 from dataset_loaders.utils import load_image
+import tqdm
 
 parser = argparse.ArgumentParser(description='Create submission file for AachenDayNight dataset on www.visuallocalization.net')
 parser.add_argument('--dir', type=str, required=True,help='Give directory where images to evaluate are')
@@ -55,8 +56,17 @@ if (args.model.find('mapnet') >= 0) or (args.model.find('multitask') >= 0):
         srq = section.getfloat('s_rel_rot', 20)"""
 
 data_dir = osp.join('..', 'data', 'deepslam_data', 'AachenDayNight')
-stats_filename = osp.join(data_dir, '', 'stats.txt')
-stats = np.loadtxt(stats_filename)
+filename = 'stats'
+"""if 'only_augmented' in args.weights:
+    filename = '{:s}_only_aug'.format(filename)
+elif 'augmented' in args.weights:
+    filename = '{:s}_augm'.format(filename)
+elif 'stylized' in args.weights:
+    filename = '{:s}_stylized'.format(filename)
+"""
+stats_file = osp.join(data_dir, '{:s}.txt'.format(filename))
+print('Using {} as stats file'.format(stats_file))
+stats = np.loadtxt(stats_file)
 crop_size_file = osp.join(data_dir, 'crop_size.txt')
 crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 resize = int(max(crop_size))
@@ -161,9 +171,9 @@ if CUDA:
 L = len(files)
 pred_poses = np.zeros((L, 7))  # store all predicted poses
 
-for i, file in enumerate(files):
-    if i % 200 == 0:
-        print('Image {:d} / {:d}'.format(i, len(files)))
+for i, file in tqdm.tqdm(enumerate(files), total=L):
+    #if i % 200 == 0:
+    #    print('Image {:d} / {:d}'.format(i, len(files)))
     
     #print('Load file %s'%file)
     data = load_image(file[1])

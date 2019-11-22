@@ -1,10 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=mapnet-aachendaynight-lr_decay
+#SBATCH --job-name=localisation
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=8GB
-#SBATCH --time=40:00:00
-#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=4GB
+#SBATCH --time=120:00:00
+#SBATCH --gres=gpu:1,VRAM:12GB
 #SBATCH --mail-type=ALL
-srun python train.py --dataset AachenDayNight --model mapnet --config configs/mapnet.ini --server 'atcremers3.informatik.tu-muenchen.de' --learn_beta --learn_gamma
-
+srun python train.py --dataset AachenDayNight --model mapnet --config configs/mapnet.ini --server 'atbeetz21.informatik.tu-muenchen.de' --learn_beta --learn_gamma --port 8834 --use_stylization

@@ -30,6 +30,7 @@ import matplotlib
 DISPLAY = 'DISPLAY' in os.environ
 if not DISPLAY:
     matplotlib.use('Agg')
+import tqdm
 
 # config
 parser = argparse.ArgumentParser(description='Evaluation script for pose regression networks')
@@ -106,7 +107,10 @@ config_file = os.path.join(os.path.dirname(args.weights), 'config.ini')
 with open(config_file, 'r') as f:
     settings.read_file(f)
 seed = settings.getint('training', 'seed')
+backbone_model = settings['training'].get('model', 'ResNet-34')
 section = settings['hyperparameters']
+crop_size = section.getint('crop_size', 224)
+crop_size = (crop_size, crop_size)
 activation_function = section.get('activation_function', 'relu').lower()
 feature_dim = section.getint('feature_dim', 2048)
 base_poses = section.get('base_poses', 'None')
@@ -126,11 +130,19 @@ if (args.model.find('mapnet') >= 0) or args.pose_graph or (args.model.find('sema
         srq = section.getfloat('s_rel_rot', 20)
         
 data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
-stats_filename = osp.join(data_dir, args.scene, 'stats.txt')
-print('load stats from {}'.format(stats_filename))
-stats = np.loadtxt(stats_filename)
-crop_size_file = osp.join('..', 'data', args.dataset, 'crop_size.txt')
-crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
+filename = 'stats'
+"""if 'only_augmented' in args.weights:
+    filename = '{:s}_only_aug'.format(filename)
+elif 'augmented' in args.weights:
+    filename = '{:s}_augm'.format(filename)
+elif 'stylized' in args.weights:
+    filename = '{:s}_stylized'.format(filename)
+"""
+stats_file = osp.join(data_dir, args.scene, '{:s}.txt'.format(filename))
+print('Using {} as stats file'.format(stats_file))
+stats = np.loadtxt(stats_file)
+#crop_size_file = osp.join('..', 'data', args.dataset, 'crop_size.txt')
+#crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 resize = int(max(crop_size))
 
 # model
@@ -151,7 +163,18 @@ elif base_poses == 'gaussian':
     print('Base poses sampled from gaussian')
 else:
     print('Standard initialization for base poses')
-feature_extractor = models.resnet34(pretrained=False)
+if backbone_model == 'ResNet-34':
+    feature_extractor = models.resnet34(pretrained=False)
+elif backbone_model == 'ResNet-101':
+    feature_extractor = models.resnet101(pretrained=False)
+elif backbone_model == 'ResNet-152':
+    feature_extractor = models.resnet152(pretrained=False)
+#elif backbone_model == 'ResNext-101':
+#    feature_extractor = models.resnext101_32x8d(pretrained=False)
+elif backbone_model == 'InceptionV3':
+    feature_extractor = models.inception_v3(pretrained=False)
+else:
+    raise NotImplementedError('Required model not implemented yet')
 posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=False,
                   feat_dim=feature_dim, activation_function=af, 
                  set_base_poses=set_base_poses)
@@ -236,6 +259,8 @@ float_semantic_transform = transforms.Compose([
 # read mean and stdev for un-normalizing predictions
 pose_stats_file = osp.join(data_dir, args.scene, 'pose_stats.txt')
 pose_m, pose_s = np.loadtxt(pose_stats_file)  # mean and stdev
+#print('Using stats: {:s}/{:s}'.format(str(pose_m), str(pose_s)))
+
 
 # dataset
 train = not args.val
@@ -298,6 +323,7 @@ elif args.dataset in ['AachenDayNight', 'CambridgeLandmarks']:
                  )
     if args.dataset == 'AachenDayNight':
         kwargs['night_augmentation'] = args.use_augmentation
+        kwargs['resize'] = resize
 elif args.dataset == 'stylized_localization':
     kwargs = dict(kwargs,
                     overfit=args.overfit,
@@ -308,7 +334,7 @@ elif args.dataset == 'stylized_localization':
 if (args.model.find('mapnet') >= 0) or args.pose_graph or (args.model.find('semantic') >= 0) or (args.model.find('multitask') >= 0):
     if args.pose_graph:
         assert real
-        kwargs = dict(kwargs, vo_lib=vo_lib)
+        kwargs = dict(kwargs, vo_lib=vo_lib, resize=resize)
     vo_func = calc_vos_safe_fc if fc_vos else calc_vos_safe
     data_set = MF(dataset=args.dataset, steps=steps, skip=skip, real=real,
                   variable_skip=variable_skip, include_vos=args.pose_graph,
@@ -364,7 +390,7 @@ union_meter = AverageMeter()
 time_meter = AverageMeter()
 count_stats = {x : 0 for x in range(10)}
 # inference loop
-for batch_idx, (data, target) in enumerate(loader):
+for batch_idx, (data, target) in tqdm.tqdm(enumerate(loader), total=L):
     #print("Data size: %s"%str(data.size()))
     #print("Target size: %s"%str(target.shape))
     """
@@ -372,8 +398,8 @@ for batch_idx, (data, target) in enumerate(loader):
     normal: Data size: torch.Size([1, 3, 3, 256, 455]) Target size: torch.Size([1, 3, 6])
     """
     
-    if batch_idx % args.print_every == 0:
-        print('Image {:d} / {:d}'.format(batch_idx, len(loader)))
+    #if batch_idx % args.print_every == 0:
+    #    print('Image {:d} / {:d}'.format(batch_idx, len(loader)))
 
     # indices into the global arrays storing poses
     if (args.model.find('vid') >= 0) or args.pose_graph:
@@ -551,7 +577,7 @@ if args.display_segmentation > 0 and len(sem_imgs) > 0:
     output_path = os.path.join(output_dir, output_name)
     save_image(images, output_path)
     final = plt.imread(output_path)
-    plt.figure(figsize==(10,10))
+    plt.figure(figsize=(10,10))
     plt.imshow(final)
     plt.show()
     

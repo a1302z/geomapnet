@@ -25,7 +25,7 @@ data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
 # dataset loader
 # creating the dataset with train=True and real=False saves the stats from the
 # training split
-kwargs = dict(scene=args.scene, data_path=data_dir, train=True, real=False, seed=7)
+kwargs = dict(scene=args.scene, data_path=data_dir, train=True, real=False, seed=7, train_split=20)
 
 if args.dataset in ['DeepLoc', 'AachenDayNight', 'CambridgeLandmarks']:
     kwargs['input_types'] = []

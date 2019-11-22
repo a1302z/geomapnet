@@ -1,10 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=multitask-aachendaynight-moresteps
+#SBATCH --job-name=localisation
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=4GB
-#SBATCH --time=60:00:00
-#SBATCH --gres=gpu:1
+#SBATCH --time=120:00:00
+#SBATCH --gres=gpu:1,VRAM:12GB
 #SBATCH --mail-type=ALL
-srun python train.py --dataset AachenDayNight --model multitask --config_file configs/uncertainty-criterion.ini --server 'atcremers3.informatik.tu-muenchen.de' --use_augmentation
-
+srun python train.py --dataset AachenDayNight --model multitask --config_file configs/multitask.ini --server 'atcremers11.informatik.tu-muenchen.de' --port 8834 --learn_beta --learn_gamma --learn_sigma

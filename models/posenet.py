@@ -73,12 +73,13 @@ class PoseNet(nn.Module):
         for m in init_modules:
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
                 #print('Unfreeze grad for %s'%str(m))
-                m.weight.requires_grad = True
+                if freeze_feature_extraction:
+                    m.weight.requires_grad = False
+                else:
+                    m.weight.requires_grad = True
                 nn.init.kaiming_normal_(m.weight.data)
                 if m.bias is not None:
                     nn.init.constant_(m.bias.data, 0)
-                if freeze_feature_extraction:
-                    m.weight.requires_grad = False
         if set_base_poses is not None:
             self.fc_xyz.weight.data = set_base_poses
             self.fc_xyz.weight.requires_grad = False
@@ -185,6 +186,13 @@ class MapNet(nn.Module):
         poses = self.mapnet(x)  # Shape(30, 6)
         poses = poses.view(s[0], s[1], -1)  # Shape(10, 3, 6)
         return poses
+    
+    def __feature_vector__(self, x):
+        s = x.size()
+        x = x.view(-1, 3, s[3], s[4])
+        x = self.mapnet.feature_extractor(x)
+        return x
+        
 
 
 class SemanticMapNet(nn.Module):

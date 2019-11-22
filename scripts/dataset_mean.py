@@ -5,6 +5,7 @@ from torchvision import transforms
 import argparse
 import numpy as np
 import os.path as osp
+import tqdm
 """
 Copyright (C) 2018 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
@@ -19,7 +20,7 @@ parser.add_argument('--dataset', type=str, choices=('7Scenes',  'DeepLoc', 'Robo
                                                    , 'CambridgeLandmarks', 'stylized_localization'),
                     help='Dataset', required=True)
 parser.add_argument('--scene', type=str, default='', help='Scene name')
-parser.add_argument('--styles', type=int, default=0, help='For stylized dataset')
+parser.add_argument('--augmentation', type=str, default='None', choices=['None', 'only', 'combined', 'stylized'], help='Use augmentation?')
 args = parser.parse_args()
 
 data_dir = osp.join('..', 'data', args.dataset)
@@ -34,7 +35,8 @@ data_transform = transforms.Compose([
 # dataset loader
 data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
 kwargs = dict(scene=args.scene, data_path=data_dir, train=True, real=False,
-              transform=data_transform)
+              transform=data_transform, only_augmentation=args.augmentation=='only',
+              night_augmentation=args.augmentation=='combined', use_stylization=args.augmentation=='stylized')
 if args.dataset == '7Scenes':
     from dataset_loaders.seven_scenes import SevenScenes
     dset = SevenScenes(**kwargs)
@@ -43,7 +45,7 @@ elif args.dataset == 'DeepLoc':
     dset = DeepLoc(**kwargs)
 elif args.dataset == 'AachenDayNight':
     from dataset_loaders.aachen import AachenDayNight
-    dset = AachenDayNight(**kwargs)
+    dset = AachenDayNight(resize=None, **kwargs)
 elif args.dataset == 'CambridgeLandmarks':
     from dataset_loaders.cambridge import Cambridge
     dset = Cambridge(**kwargs)
@@ -57,20 +59,20 @@ else:
     raise NotImplementedError
 
 # accumulate
-batch_size = 8
-num_workers = 0
+batch_size = 90
+num_workers = 8
 loader = DataLoader(dset, batch_size=batch_size, num_workers=num_workers,
                     collate_fn=safe_collate)
 acc = np.zeros((3, crop_size[0], crop_size[1]))
 sq_acc = np.zeros((3, crop_size[0], crop_size[1]))
-for batch_idx, (imgs, _) in enumerate(loader):
+for batch_idx, (imgs, _) in tqdm.tqdm(enumerate(loader), total=len(loader)):
     imgs = imgs.numpy()
     acc += np.sum(imgs, axis=0)
     sq_acc += np.sum(imgs**2, axis=0)
 
-    if batch_idx % 50 == 0:
-        print('Accumulated {:d} / {:d}'.format(
-            batch_idx * batch_size, len(dset)))
+    #if batch_idx % 50 == 0:
+    #    print('Accumulated {:d} / {:d}'.format(
+    #        batch_idx * batch_size, len(dset)))
 
 N = len(dset) * acc.shape[1] * acc.shape[2]
 
@@ -84,6 +86,15 @@ std_p /= N
 std_p -= (mean_p ** 2)
 print('Std. pixel = ', std_p)
 
-output_filename = osp.join('..', 'data', 'deepslam_data', args.dataset, args.scene, 'stats.txt' if args.styles == 0 else 'stats_{}_styles.txt'.format(args.styles))
+filename = 'stats'
+#if args.styles >0:
+#    filename = '{:s}_{:d}_styles'.format(filename, args.styles)
+if args.augmentation == 'only':
+    filename = '{:s}_only_aug'.format(filename)
+elif args.augmentation == 'combined':
+    filename = '{:s}_augm'.format(filename)
+elif args.augmentation == 'stylized':
+    filename = '{:s}_stylized'.format(filename)
+output_filename = osp.join('..', 'data', 'deepslam_data', args.dataset, args.scene, '{:s}.txt'.format(filename))
 np.savetxt(output_filename, np.vstack((mean_p, std_p)), fmt='%8.7f')
 print('{:s} written'.format(output_filename))

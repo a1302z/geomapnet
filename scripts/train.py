@@ -54,12 +54,14 @@ parser.add_argument('--learn_direct_sigma', action='store_true', help='Learn sig
 parser.add_argument('--init_seed', type=int, default=0, help='Set seed for random initialization of model')
 parser.add_argument('--server', type=str, default='http://localhost', help='Set visdom server address')
 parser.add_argument('--port', type=int, default=8097, help='set visdom port')
-parser.add_argument('--crop_size_file', type=str, default='crop_size.txt', help='Specify crop size file')
+#parser.add_argument('--crop_size_file', type=str, default='crop_size.txt', help='Specify crop size file')
 parser.add_argument('--use_augmentation', action='store_true', help='Use augmented images. Needs to be supported by dataloader (currently only AachenDayNight)')
 parser.add_argument('--only_augmentation', action='store_true', help='Use only augmented images. Not in combination with use augmentation option!')
+parser.add_argument('--use_stylization', action='store_true', help='Use stylized images as augmentation.')
 parser.add_argument('--styles', type=int, default=0, help='Only for stylized dataset')
 
 args = parser.parse_args()
+print(args)
 
 settings = configparser.ConfigParser()
 with open(args.config_file, 'r') as f:
@@ -73,13 +75,23 @@ loss_fn_config = section.get('loss_fn', 'l1').lower()
 
 
 data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
-stats_file = osp.join(data_dir, args.scene, 'stats.txt' if args.styles == 0 else 'stats_{}_styles.txt'.format(args.styles))
+filename = 'stats'
+"""if 'args.only_augmentation':
+    filename = '{:s}_only_aug'.format(filename)
+elif args.use_augmentation:
+    filename = '{:s}_augm'.format(filename)
+elif args.use_stylization:
+    filename = '{:s}_stylized'.format(filename)
+"""
+stats_file = osp.join(data_dir, args.scene, '{:s}.txt'.format(filename))
 print('Using {} as stats file'.format(stats_file))
 stats = np.loadtxt(stats_file)
-crop_size_file = osp.join('..', 'data', args.dataset, args.crop_size_file)
-crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
+#crop_size_file = osp.join('..', 'data', args.dataset, args.crop_size_file)
+#crop_size = tuple(np.loadtxt(crop_size_file).astype(np.int))
 
 section = settings['hyperparameters']
+crop_size = section.getint('crop_size', 224)
+crop_size = (crop_size, crop_size)
 freeze = section.getboolean('freeze_feature_extraction', False)
 activation_function = section.get('activation_function', 'relu').lower()
 feature_dim = section.getint('feature_dim', 2048)
@@ -103,7 +115,10 @@ if args.model.find('++') >= 0:
     print('Using {:s} VO'.format(vo_lib))
 
 section = settings['training']
+backbone_model = section.get('model', 'ResNet-34')
 seed = section.getint('seed')
+optim_config['epochs'] = section.getint('n_epochs')
+
 
 det_seed = args.init_seed
 if det_seed >= 0:
@@ -131,7 +146,19 @@ elif base_poses == 'gaussian':
     print('Base poses sampled from gaussian')
 else:
     print('Standard initialization for base poses')
-feature_extractor = pretrainedmodels.resnet34(pretrained=True)
+if backbone_model == 'ResNet-34':
+    feature_extractor = pretrainedmodels.resnet34(pretrained=True)
+elif backbone_model == 'ResNet-101':
+    feature_extractor = pretrainedmodels.resnet101(pretrained=True)
+elif backbone_model == 'ResNet-152':
+    feature_extractor = pretrainedmodels.resnet152(pretrained=True)
+#elif backbone_model == 'ResNext-101':
+#    feature_extractor = pretrainedmodels.resnext101_32x8d(pretrained=True)
+elif backbone_model == 'InceptionV3':
+    feature_extractor = pretrainedmodels.inception_v3(pretrained=True)
+else:
+    raise NotImplementedError('Required model not implemented yet')
+print('Use {:s} as backbone'.format(backbone_model))
 posenet = PoseNet(feature_extractor, droprate=dropout, pretrained=True,
                   filter_nans=(args.model == 'mapnet++'), feat_dim=feature_dim, 
                  freeze_feature_extraction = freeze, activation_function=af, 
@@ -259,6 +286,7 @@ data_dir = osp.join('..', 'data', 'deepslam_data', args.dataset)
 kwargs = dict(scene=args.scene, data_path=data_dir, transform=data_transform,
               target_transform=target_transform, seed=seed)
 assert not (args.only_augmentation and args.use_augmentation), 'Not both options possible'
+assert not (args.use_augmentation and args.use_stylization), 'Not both options possible'
 #default
 input_types = ['img']
 output_types = ['pose']
@@ -309,7 +337,7 @@ if args.model == 'posenet':
         data_path, train, train_split=0.7,    
                 input_types='image', output_types='pose', real=False
         """
-        kwargs = dict(kwargs,
+        kwargs = dict(kwargs, resize=resize,
                       overfit=args.overfit,
                       semantic_transform=semantic_transform,
                       #semantic_colorized_transform=float_semantic_transform,
@@ -319,6 +347,7 @@ if args.model == 'posenet':
                       #concatenate_inputs=True
                       night_augmentation=args.use_augmentation,
                       only_augmentation=args.only_augmentation,
+                      use_stylization = args.use_stylization
                      )
         from dataset_loaders.aachen import AachenDayNight
         train_set = AachenDayNight(train=True, **kwargs)
@@ -368,7 +397,7 @@ elif 'mapnet' in args.model or 'semantic' in args.model or 'multitask' in args.m
                       concatenate_inputs=True)
         
     elif args.dataset in ['AachenDayNight', 'CambridgeLandmarks']:
-        kwargs = dict(kwargs,
+        kwargs = dict(kwargs, 
                       overfit=args.overfit,
                       semantic_transform=semantic_transform,
                       #semantic_colorized_transform=float_semantic_transform,
@@ -378,8 +407,10 @@ elif 'mapnet' in args.model or 'semantic' in args.model or 'multitask' in args.m
                       #concatenate_inputs=True
                      )
         if args.dataset == 'AachenDayNight':
+            kwargs['resize'] = resize
             kwargs['night_augmentation']=args.use_augmentation
             kwargs['only_augmentation']=args.only_augmentation
+            kwargs['use_stylization'] = args.use_stylization
             kwargs['verbose'] = False
     elif args.dataset == 'stylized_localization':
         kwargs = dict(kwargs,
@@ -415,6 +446,12 @@ if args.learn_sigma:
     experiment_name = '{:s}_learn_sigma'.format(experiment_name)
 if args.uncertainty_criterion:
     experiment_name = '{:s}_uncertainty_criterion'.format(experiment_name)
+if args.use_augmentation:
+    experiment_name = '{:s}_augmented'.format(experiment_name)
+elif args.only_augmentation:
+    experiment_name = '{:s}_only_augmented'.format(experiment_name)
+elif args.use_stylization:
+    experiment_name = '{:s}_stylized'.format(experiment_name)
 if det_seed >= 0:
     experiment_name = '{:s}_seed{}'.format(experiment_name, det_seed) 
 if args.styles > 0:

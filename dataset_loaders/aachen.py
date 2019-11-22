@@ -9,16 +9,36 @@ from common.pose_utils import process_poses_quaternion
 import transforms3d.quaternions as txq
 from dataset_loaders.utils import load_image, single_channel_loader
 import os
+import tqdm
 
 def identity(x):
     return x
 
+available_styles = [
+    'goeritz',
+    'asheville',
+    'mondrian',
+    'scene_de_rue',
+    'flower_of_life',
+    'antimonocromatismo',
+    'woman_with_hat_matisse',
+    'trial',
+    'sketch',
+    'picasso_self_portrait',
+    'picasso_seated_nude_hr',
+    'la_muse',
+    'contrast_of_forms',
+    'brushstrokes',
+    'the_resevoir_at_poitiers',
+    'woman_in_peasant_dress'
+]
+
 class AachenDayNight(data.Dataset):
     
-    def __init__(self, data_path, train, train_split=20, overfit=None,
+    def __init__(self, data_path, train, resize, train_split=20, overfit=None,
                 seed=7,input_types='img', output_types='pose', real=False
                 ,transform=identity, semantic_transform=identity, scene='', target_transform=identity, 
-                night_augmentation=False, only_augmentation=False, augmentation_version='_v2', 
+                night_augmentation=False, only_augmentation=False, use_stylization=False,
                 verbose=False):
         """
         seed=7, overfit=None, reduce_data=True,
@@ -33,6 +53,8 @@ class AachenDayNight(data.Dataset):
         self.train = train
         self.night_augmentation = night_augmentation
         self.only_augmentation = only_augmentation
+        self.use_stylization = use_stylization
+        self.resize = resize
         assert not (night_augmentation and only_augmentation), 'Not both augmentation options possible'
         if verbose:
             if self.night_augmentation:
@@ -86,9 +108,18 @@ class AachenDayNight(data.Dataset):
             self.night_img_paths = []
             for i in self.img_paths:
                 img_name = ntpath.basename(i).replace('.jpg','.png')
-                aug_path = os.path.join(self.data_path, 'AugmentedNightImages_v2', img_name)
+                aug_path = os.path.join(self.data_path, 'AugmentedNightImages_high_res', img_name)
                 assert os.path.isfile(aug_path), 'Augmented file not found'
                 self.night_img_paths.append(aug_path)
+        if self.use_stylization:
+            self.stylized_paths = []
+            for i, path in enumerate(self.img_paths):
+                img_dir, base_name = os.path.split(path)
+                base_name = base_name.split('.')
+                base_name = base_name[0] + '-stylized-'+available_styles[i % len(available_styles)] + '.' + base_name[1]
+                file = os.path.join(self.data_path, img_dir, 'stylized', base_name)
+                assert os.path.isfile(file), 'Stylized image not found: {:s}'.format(file)
+                self.stylized_paths.append(file)
                 
         for i in range(num_points):
             if i % self.train_split == 0:
@@ -154,26 +185,72 @@ class AachenDayNight(data.Dataset):
         if train and not real:
             # optionally, use the ps dictionary to calc stats
             mean_t = self.poses[:, :3].mean(axis=0)
-            print('Mean: %s saved to %s'%(str(mean_t), pose_stats_filename))
             std_t = self.poses[:, :3].std(axis=0)
+            print('Stats {:s} saved to {:s}'.format('{:s}/{:s}'.format(str(mean_t), str(std_t)), pose_stats_filename))
             np.savetxt(
                 pose_stats_filename, np.vstack(
                     (mean_t, std_t)), fmt='%8.7f')
         else:
             mean_t, std_t = np.loadtxt(pose_stats_filename)
+            print('Use stats: {:s}/{:s}'.format(str(mean_t), str(std_t)))
         self.poses = process_poses_quaternion(self.poses[:,:3], self.poses[:,3:], mean_t, std_t, np.eye(3), np.zeros(3), np.ones(1))
         if verbose:
             print('Process poses: %s'%str(self.poses.shape))
             
+        if resize is not None:
+            self.__resize__(resolution=resize)
+            
     def __len__(self):
-        factor = 2 if self.night_augmentation else 1
+        factor = 2 if self.night_augmentation or self.use_stylization else 1
         return len(self.poses)*factor
+    
+    def __resize__(self, resolution=256):
+        import torchvision.transforms as tf
+        transform = tf.Resize(resolution)
+        L = self.__len__()
+        for index in tqdm.tqdm(range(L), total=L, desc='Resize', leave=False):
+            augmentation_index = 0
+            if self.night_augmentation or self.use_stylization:
+                augmentation_index = index // len(self.poses)
+                index = index % len(self.poses)
+            elif self.only_augmentation:
+                augmentation_index = 1
+            if augmentation_index == 0:
+                img_path = os.path.join(self.data_path,self.img_paths[index])
+                #direct, name = self.data_path, self.img_paths[index]
+            else:
+                if self.night_augmentation:
+                    img_path = self.night_img_paths[index]
+                elif self.use_stylization:
+                    img_path = self.stylized_paths[index]
+            direct, name = os.path.split(img_path)
+            new_dir = os.path.join(direct, 'resized')
+            if not os.path.isdir(new_dir):
+                os.mkdir(new_dir)
+            new_name = 'resized_{}px_{:s}'.format(resolution, name)
+            new_path = os.path.join(new_dir, new_name)
+            if not os.path.isfile(new_path):
+                img = load_image(img_path)
+                try:
+                    img = transform(img)
+                except:
+                    print('Problem with image {}'.format(img_path))
+                    exit()
+                img.save(new_path)
+            if augmentation_index == 0:
+                self.img_paths[index] = os.path.join('images_upright', 'db', new_name)
+            else:
+                if self.night_augmentation:
+                    self.night_img_paths[index] = new_path
+                elif self.use_stylization:
+                    self.stylized_paths[index] = new_path
+            #print('New image path: {:s}'.format(new_path))
         
             
             
     def __getitem__(self, index):
         augmentation_index = 0
-        if self.night_augmentation:
+        if self.night_augmentation or self.use_stylization:
             augmentation_index = index // len(self.poses)
             index = index % len(self.poses)
         elif self.only_augmentation:
@@ -184,8 +261,14 @@ class AachenDayNight(data.Dataset):
             if inp == 'img':
                 if augmentation_index == 0:
                     img_path = os.path.join(self.data_path,self.img_paths[index])
+                    if self.resize:
+                        d, n = os.path.split(img_path)
+                        img_path = os.path.join(d, 'resized', n)
                 else:
-                    img_path = self.night_img_paths[index]
+                    if self.night_augmentation:
+                        img_path = self.night_img_paths[index]
+                    elif self.use_stylization:
+                        img_path = self.stylized_paths[index]
                 img = load_image(img_path)
                 img = None if img is None else self.transforms['img'](img)
                 inps.append(img)
@@ -222,17 +305,33 @@ class AachenDayNight(data.Dataset):
         return inps[0] if len(inps) <= 1 else tuple(inps), outs[0] if len(outs) <= 1 else outs
             
 if __name__ == '__main__':
+    from torchvision import transforms, utils
+    import torch
+    import matplotlib.pyplot as plt
+    test = AachenDayNight('../data/deepslam_data/AachenDayNight/', True, 224, use_stylization=True)
+    tf = transforms.Compose([
+        transforms.Resize(224),
+        transforms.CenterCrop(224),
+        transforms.ToTensor()
+    ])
+    L = len(test)
+    print('Dataset has {:d} entries'.format(L))
+    imgs = torch.stack([tf(test[i][0]) for i in range(L//2-7, L//2+7)])
+    grid = utils.make_grid(imgs, 7)
+    plt.imshow(grid.permute(1, 2, 0))
+    plt.show()
+    """
     loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', True, verbose=True)
     print(len(loader))
     loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', False, input_types=['img', 'label', 'point_cloud'], verbose = True, night_augmentation=True)
     print(len(loader))
-    """
+    """"""
     for i, (inp, target) in enumerate(loader):
         if i % 100 == 0:
             print('%d/%d loaded data points'%(i, len(loader)))
         if i > len(loader):
             break
-    """
+    """"""
     x, c = loader[0]
     pose_stats_filename = os.path.join('../data/deepslam_data/AachenDayNight/', 'pose_stats.txt')
     mean_t, std_t = np.loadtxt(pose_stats_filename)
@@ -244,7 +343,6 @@ if __name__ == '__main__':
         else:
             print(type(x_i))
     pc = x[2]
-    import matplotlib.pyplot as plt
     plt.imshow(x[0])
     plt.show()
     from mpl_toolkits.mplot3d import Axes3D
@@ -257,3 +355,4 @@ if __name__ == '__main__':
     ax.set_ylim3d(-thresh,thresh)
     ax.set_zlim3d(-thresh,thresh)
     plt.show()
+    """
