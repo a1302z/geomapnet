@@ -257,3 +257,4 @@ scripts/slurm*.out
 scripts/logs/*
 scripts/test_angles.py
 Untitled.ipynb
+scripts/slurm_scripts/*

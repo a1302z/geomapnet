@@ -151,7 +151,7 @@ float_semantic_transform = transforms.Compose([
         transforms.ToTensor()
     ])
 # read mean and stdev for un-normalizing predictions
-pose_stats_file = osp.join(data_dir, 'pose_stats.txt')
+pose_stats_file = osp.join(data_dir, 'pose_stats_synthetic.txt' if 'synthetic' in args.weights else 'pose_stats.txt')
 pose_m, pose_s = np.loadtxt(pose_stats_file)  # mean and stdev
 print('Load stats from %s\npose mean: %s\npose std: %s'%(data_dir,str(pose_m), str(pose_s)))
 

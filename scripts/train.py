@@ -57,7 +57,8 @@ parser.add_argument('--port', type=int, default=8097, help='set visdom port')
 #parser.add_argument('--crop_size_file', type=str, default='crop_size.txt', help='Specify crop size file')
 parser.add_argument('--use_augmentation', type=str, default=None, choices=['combined', 'only'], help='Use augmented images. Needs to be supported by dataloader (currently only AachenDayNight)')
 #parser.add_argument('--only_augmentation', action='store_true', help='Use only augmented images. Not in combination with use augmentation option!')
-parser.add_argument('--use_stylization', action='store_true', help='Use stylized images as augmentation.')
+parser.add_argument('--use_stylization', default=None, type=int, help='Use stylized images as augmentation. Argument is number of used styles per database image. All styles are used equally.')
+parser.add_argument('--use_synthetic', action='store_true', help='Use synthetic images for training')
 #parser.add_argument('--styles', type=int, default=0, help='Only for stylized dataset')
 
 args = parser.parse_args()
@@ -344,7 +345,8 @@ if args.model == 'posenet':
                       train_split=train_split,
                       #concatenate_inputs=True
                       night_augmentation=args.use_augmentation,
-                      use_stylization = args.use_stylization
+                      use_stylization = args.use_stylization, 
+                      use_synthetic = args.use_synthetic
                      )
         from dataset_loaders.aachen import AachenDayNight
         train_set = AachenDayNight(train=True, **kwargs)
@@ -407,6 +409,7 @@ elif 'mapnet' in args.model or 'semantic' in args.model or 'multitask' in args.m
             kwargs['resize'] = resize
             kwargs['night_augmentation']=args.use_augmentation
             kwargs['use_stylization'] = args.use_stylization
+            kwargs['use_synthetic'] = args.use_synthetic
             kwargs['verbose'] = False
     elif args.dataset == 'stylized_localization':
         kwargs = dict(kwargs,
@@ -448,6 +451,10 @@ elif args.use_augmentation == 'only':
     experiment_name = '{:s}_only_augmented'.format(experiment_name)
 if args.use_stylization:
     experiment_name = '{:s}_stylized'.format(experiment_name)
+    if args.use_stylization > 1:
+        experiment_name = '{:s}_{:d}_styles'.format(experiment_name, args.use_stylization)
+if args.use_synthetic:
+    experiment_name = '{:s}_synthetic'.format(experiment_name)
 if det_seed >= 0:
     experiment_name = '{:s}_seed{}'.format(experiment_name, det_seed) 
 #if args.styles > 0:

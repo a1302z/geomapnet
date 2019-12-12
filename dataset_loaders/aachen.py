@@ -77,7 +77,7 @@ class AachenDayNight(data.Dataset):
     def __init__(self, data_path, train, resize, train_split=20, overfit=None,
                 seed=7,input_types='img', output_types='pose', real=False
                 ,transform=identity, semantic_transform=identity, scene='', target_transform=identity, 
-                night_augmentation=None, use_stylization=False,
+                night_augmentation=None, use_stylization=None, use_synthetic=False,
                 verbose=False, augmentation_directory='AugmentedNightImages_high_res'):
         
         np.random.seed(seed)
@@ -115,7 +115,7 @@ class AachenDayNight(data.Dataset):
         lines[3:] = [x.strip().split(' ') for x in lines[3:]]
         poses = []
         index = 0
-        for i in range(3, len(lines)):
+        for i in tqdm.tqdm(range(3, len(lines)), total=len(lines)-3, desc='Read images', leave=False):
             l = lines[i]
             q = [float(x) for x in l[2:6]]
             c = [float(x) for x in l[6:9]]
@@ -124,38 +124,83 @@ class AachenDayNight(data.Dataset):
             #self.img_paths.append(os.path.join('images_upright', l[0]))
             self.images.append(Sample(index, os.path.join(self.data_path, 'images_upright', l[0]), pose))
             index += 1
+        if use_synthetic:
+            #sorry all hardcoded paths :(
+            train_file = os.path.join(self.data_path, 'aachen_synthetic_around_db', 'dataset_train.txt')
+            train_file = open(train_file, 'r')
+            train_lines = train_file.readlines()
+            train_lines = [l.strip().split(' ') for l in train_lines]
+            train_lines = train_lines[3:]
+            num_fails = 0
+            synth_dir = os.path.join(self.data_path, 'aachen_synthetic_around_db')
+            synth_elms = set(os.listdir(synth_dir))
+            for line in tqdm.tqdm(train_lines, total=len(train_lines), leave=False, desc='read synthetic'):
+                filename = '{:s}.png'.format(line[0])
+                path = os.path.join(synth_dir, filename)
+                if filename not in synth_elms:
+                    num_fails += 1
+                    continue
+                pose = np.asarray([float(l) for l in line[1:8]])
+                self.images.append(Sample(index, path, pose))
+                index+=1
+                poses.append(pose)
+            del synth_elms
+            print('{:d} synthetic images not available'.format(num_fails))
+            print('Dataset size: {:d}'.format(len(self.images)))
         poses = np.vstack(poses)
+        
         #del poses
         self.sem_labels = None
         if 'label' in self.input_types or 'label' in self.output_types:
+            sem_dir = os.path.join(self.data_path, 'sem_labels')
+            sem_elms = set(os.listdir(sem_dir))
             for i in range(len(self.images)):
                 img_path = self.images[i].path
-                sem_path = os.path.join(self.data_path, 'sem_labels', ntpath.basename(img_path).replace('.jpg','.png'))
-                if os.path.isfile(sem_path):
+                filename = ntpath.basename(img_path).replace('.jpg','.png')
+                if filename in sem_elms:
+                    sem_path = os.path.join(sem_dir, filename)
                     self.images[i].semantic = sem_path
                 else:
                     raise AssertionError('WARNING: SEMANTIC LABEL NOT FOUND')
             if verbose:
                 print('All semantic labels successfully loaded')
+            del sem_elms
         #self.night_img_paths = None
         if self.night_augmentation is not None:
             self.night_img_paths = []
-            for i in range(len(self.images)):
+            aug_dir = os.path.join(self.data_path, augmentation_directory)
+            aug_elms = set(os.listdir(aug_dir))
+            for i in tqdm.tqdm(range(len(self.images)), total=len(self.images), desc='Read night', leave=False):
                 img_name = ntpath.basename(self.images[i].path).replace('.jpg','.png')
-                aug_path = os.path.join(self.data_path, augmentation_directory, img_name)
-                assert os.path.isfile(aug_path), 'Augmented file not found'
+                aug_path = os.path.join(aug_dir, img_name)
+                if img_name not in aug_elms:
+                    raise AssertionError('Augmented file not found: {:s}'.format(aug_path))
+                    exit()
                 self.images[i].nighttime = aug_path
+            del aug_elms
                 
         if self.use_stylization:
-            for i in range(len(self.images)):
+            listdirs = {}
+            for i in tqdm.tqdm(range(len(self.images)), total=len(self.images), desc='Read styles', leave=False):
                 img_dir, base_name = os.path.split(self.images[i].path)
                 base_name = base_name.split('.')
-                base_name = base_name[0] + '-stylized-'+available_styles[i % len(available_styles)] + '.' + base_name[1]
-                file = os.path.join(img_dir, 'stylized', base_name)
-                assert os.path.isfile(file), 'Stylized image not found: {:s}'.format(file)
-                self.images[i].stylized = file
+                files = []
+                factor = len(available_styles) // self.use_stylization
+                for j in range(self.use_stylization):
+                    styl_name = base_name[0] + '-stylized-'+available_styles[(i+j*factor) % len(available_styles)] + '.' + base_name[1]
+                    styl_dir = os.path.join(img_dir, 'stylized')
+                    if styl_dir not in listdirs:
+                        listdirs[styl_dir] = set(os.listdir(styl_dir))
+                    if styl_name not in listdirs[styl_dir]:
+                        raise AssertionError('Stylized image not found: {:s}'.format(file))
+                        exit()
+                    file = os.path.join(styl_dir, styl_name)
+                    files.append(file)
+                self.images[i].stylized = files
+            del listdirs
                 
-        for i in range(len(self.images)):
+                
+        for i in tqdm.tqdm(range(len(self.images)), total=len(self.images), desc='Split dataset', leave=False):
             if i % self.train_split == 0:
                 self.val_idcs.append(i)
             else:
@@ -177,7 +222,7 @@ class AachenDayNight(data.Dataset):
                 self.images[i].point_cloud = []
             if verbose:
                 print('Created dict for img-point correspondances')
-            for i in range(num_sifts):
+            for i in tqdm.tqdm(range(num_sifts), total=num_sifts, desc='read sift', leave=False):
                 if i % 500000 == 0:
                     print('%d/%d'%(i,num_sifts))
                 line = sift_lines[i]
@@ -197,7 +242,8 @@ class AachenDayNight(data.Dataset):
             self.train_idcs = self.train_idcs[:overfit]
             
         ##Reduce data
-        self.images = [self.images[i] for i in (self.train_idcs if self.train else self.val_idcs)]
+        img_set = self.train_idcs if self.train else self.val_idcs
+        self.images = [self.images[i] for i in tqdm.tqdm(img_set, total=len(img_set), desc='reduce dataset', leave=False)]
         """self.poses = self.poses[self.train_idcs if self.train else self.val_idcs]
         self.img_paths = [self.img_paths[x] for x in (self.train_idcs if self.train else self.val_idcs)]
         if self.night_img_paths is not None:
@@ -218,7 +264,10 @@ class AachenDayNight(data.Dataset):
                 print(len(self.points_per_img))
         """
                 
-        pose_stats_filename = os.path.join(self.data_path, 'pose_stats.txt')
+        if use_synthetic:
+            pose_stats_filename = os.path.join(self.data_path, 'pose_stats_synthetic.txt')
+        else:
+            pose_stats_filename = os.path.join(self.data_path, 'pose_stats.txt')
         if train and not real:
             # optionally, use the ps dictionary to calc stats
             mean_t = poses[:, :3].mean(axis=0)
@@ -247,7 +296,9 @@ class AachenDayNight(data.Dataset):
             self.types.add_range((index, index+len(self.images)), 1) 
             index += len(self.images)
         if self.use_stylization:
-            self.types.add_range((index, index+len(self.images)), 2)
+            for i in range(self.use_stylization):
+                self.types.add_range((index, index+len(self.images)), 2+i)
+                index = index+len(self.images)
         #print(str(self.types))
             
     def __len__(self):
@@ -255,17 +306,26 @@ class AachenDayNight(data.Dataset):
         if self.night_augmentation == 'combined':
             L += len(self.images)
         if self.use_stylization:
-            L += len(self.images) #*num_styles
+            L += len(self.images)*self.use_stylization
         return L
     
     def __img_resize__(self, img_path, transform, resolution, semantic=False):
+        """# Check if image needs to be resized (Nope too slow)
+        old_img = Image.open(img_path)
+        o_w, o_h = old_img.size
+        if o_w == resolution == o_h:
+            return img_path
+        """
+        # Resize image
         direct, name = os.path.split(img_path)
         new_dir = os.path.join(direct, 'resized')
         if not os.path.isdir(new_dir):
             os.mkdir(new_dir)
+        if new_dir not in self.resize_directories:
+            self.resize_directories[new_dir] = set(os.listdir(new_dir))
         new_name = 'resized_{}px_{:s}'.format(resolution, name)
         new_path = os.path.join(new_dir, new_name)
-        if not os.path.isfile(new_path):
+        if new_name not in self.resize_directories[new_dir]:
             if semantic:
                 img = Image.open(img_path)
             else:
@@ -279,6 +339,7 @@ class AachenDayNight(data.Dataset):
         return new_path
     
     def __resize__(self, resolution=256):
+        self.resize_directories = {}
         import torchvision.transforms as tf
         resize = tf.Compose([
             tf.Resize(resolution), 
@@ -300,8 +361,12 @@ class AachenDayNight(data.Dataset):
             if self.night_augmentation is not None:
                 img.nighttime = self.__img_resize__(img.nighttime, resize, resolution=resolution)
             if self.use_stylization:
-                img.stylized = self.__img_resize__(img.stylized, resize, resolution=resolution)
+                y = []
+                for x in img.stylized:
+                    y.append(self.__img_resize__(x, resize, resolution=resolution))
+                img.stylized = y
             self.images[index] = img
+        del self.resize_directories
         
             
             
@@ -310,7 +375,7 @@ class AachenDayNight(data.Dataset):
         Augmentation index defines which type of images is returned:
         0: standard daytime image
         1: artificial nighttime images
-        2: stylized images
+        >=2: stylized images
         """
         augmentation_index = self.types[index]
         inps = []
@@ -322,8 +387,8 @@ class AachenDayNight(data.Dataset):
                     img_path = img_sample.path
                 elif augmentation_index == 1:
                     img_path = img_sample.nighttime
-                elif augmentation_index == 2:
-                    img_path = img_sample.stylized
+                elif augmentation_index >= 2:
+                    img_path = img_sample.stylized[augmentation_index-2]
                 else:
                     raise NotImplementedError('Whats going on? Augmentation index: {:s}\t Index: {:d}'.format(str(augmentation_index), index))
                 img = load_image(img_path)
@@ -362,26 +427,35 @@ class AachenDayNight(data.Dataset):
         return inps[0] if len(inps) <= 1 else tuple(inps), outs[0] if len(outs) <= 1 else outs
             
 if __name__ == '__main__':
-    from torchvision import transforms, utils
-    import torch
-    import matplotlib.pyplot as plt
-    test = AachenDayNight('../data/deepslam_data/AachenDayNight/', False, 224,
-                          use_stylization=True, night_augmentation='combined', 
-                         output_types=['pose', 'label'])
-    tf = transforms.Compose([
-        transforms.Resize(224),
-        transforms.CenterCrop(224),
-        transforms.ToTensor()
-    ])
-    L = len(test)
-    print('Dataset has {:d} entries'.format(L))
-    for i in tqdm.tqdm(range(len(test)), total=L, desc='All there?', leave=False):
-        test[i]
-    imgs = torch.stack([tf(test[i][0]) for i in range(L//3-7, L//3+7)] 
-                       + [tf(test[i][0]) for i in range(2*(L//3)-7, 2*(L//3)+7)])
-    grid = utils.make_grid(imgs, 7)
-    plt.imshow(grid.permute(1, 2, 0))
-    plt.show()
+    test_name = 'synthetic'
+    
+    if test_name == 'augmentation':
+        from torchvision import transforms, utils
+        import torch
+        import matplotlib.pyplot as plt
+        test = AachenDayNight('../data/deepslam_data/AachenDayNight/', True, 224,
+                              use_stylization=16, night_augmentation=None, 
+                             output_types=['pose', 'label'])
+        tf = transforms.Compose([
+            transforms.Resize(224),
+            transforms.CenterCrop(224),
+            transforms.ToTensor()
+        ])
+        L = len(test)
+        print('Dataset has {:d} entries'.format(L))
+        for i in tqdm.tqdm(range(len(test)), total=L, desc='All there?', leave=False):
+            test[i]
+        imgs = torch.stack([tf(test[i][0]) for i in range(L//16-7, L//16+7)] 
+                           #+ [tf(test[i][0]) for i in range(2*(L//3)-7, 2*(L//3)+7)]
+                          )
+        grid = utils.make_grid(imgs, 7)
+        plt.imshow(grid.permute(1, 2, 0))
+        plt.show()
+    elif test_name=='synthetic':
+        test = AachenDayNight('../data/deepslam_data/AachenDayNight/', True, 224,
+                              use_synthetic=True, use_stylization=16,
+                             output_types=['pose'])
+        print('Length synthetic dataset: {:d}'.format(len(test)))
     """
     loader = AachenDayNight('../data/deepslam_data/AachenDayNight/', True, verbose=True)
     print(len(loader))
