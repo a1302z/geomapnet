@@ -125,13 +125,15 @@ class MapNetCriterion(nn.Module):
         if self.dual_target:
             pred, sem_pred = pred[0], pred[1]
             targ, sem_targ = targ[0], targ[1]
+        if len(pred.size()) < 3:
+            pred = pred.unsqueeze(0)
         s = pred.size()
         
         # absolute pose loss
         # get the VOs
         pred_vos = pose_utils.calc_vos_simple(pred)
         targ_vos = pose_utils.calc_vos_simple(targ)
-        
+    
         t_loss = self.t_loss_fn(pred.view(-1, *s[2:])[:, :3],
                                 targ.view(-1, *s[2:])[:, :3])
         

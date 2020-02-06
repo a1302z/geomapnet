@@ -159,7 +159,7 @@ class GradCAMpp(GradCAM):
             mask: saliency map of the same spatial dimension with input
             logit: model output
         """
-        _, b, c, h, w = data.size()
+        b, c, h, w = data.size()
         score, output = step_feedfwd(data, self.model_arch, torch.cuda.is_available(), criterion = criterion, target=target, train=True, activation_maps=True)
         """
         data_var = Variable(data, requires_grad=False)
@@ -208,7 +208,7 @@ class GradCAMpp(GradCAM):
         return saliency_map, score
     
     
-def visualize_cam(mask, img):
+def visualize_cam(mask, img, size):
     """Make heatmap from mask and synthesize GradCAM result image using heatmap and img.
     Args:
         mask (torch.tensor): mask shape of (1, 1, H, W) and each element has value in range [0, 1]
@@ -221,7 +221,7 @@ def visualize_cam(mask, img):
     
     #print("Shape mask is: %s\tShould be (1,1,H,W)"%str(mask.shape))
     #print("Shape img is: %s\tShould be (1,3,H,W)"%str(img.shape))
-    mask = mask[0].reshape(1, 1, 256, 455)
+    mask = mask[0].reshape(1, 1, *size)
     x = np.moveaxis(mask.squeeze().cpu().data.numpy().astype(np.uint8), 0, -1)
     heatmap = cv2.applyColorMap(np.uint8((255 * (x+1))/2), cv2.COLORMAP_JET)
     heatmap = cv2.applyColorMap(np.uint8(255 * mask.squeeze()), cv2.COLORMAP_JET)

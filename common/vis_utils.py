@@ -71,6 +71,8 @@ def sem_labels_to_rgb_deeploc(img):
             out[i,j] = rgb_colors[index]
     return out
 
+
+
 def sem_labels_to_rgb(img):
     img = img/np.max(img)
     cm = plt.get_cmap('rainbow')
